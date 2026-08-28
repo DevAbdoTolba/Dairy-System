@@ -1,0 +1,13 @@
+{
+  "name": "نظام معمل الجبنة",
+  "short_name": "معمل الجبنة",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#075985",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
