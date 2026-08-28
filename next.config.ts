@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // Vercel's Next 16.3 adapter does not support standalone output. Docker still
+  // receives the standalone bundle it needs, while Vercel uses its native adapter.
+  output: process.env.VERCEL ? undefined : "standalone",
   serverExternalPackages: ["mongodb"],
   // Keeps Playwright isolated when the owner is already using `npm run dev`.
   distDir: process.env.DAIRY_NEXT_DIST_DIR ?? ".next",
