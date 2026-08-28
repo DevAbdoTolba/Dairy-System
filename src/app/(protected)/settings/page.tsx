@@ -3,8 +3,8 @@ import Typography from "@mui/material/Typography";
 import { getSettings, listActiveVariants } from "@/modules/inventory";
 import { SettingsPanel } from "./settings-panel";
 
-export default function SettingsPage() {
-  const settings = getSettings();
+export default async function SettingsPage() {
+  const [settings, variants] = await Promise.all([getSettings(), listActiveVariants()]);
   return (
     <Stack spacing={3}>
       <div>
@@ -13,7 +13,7 @@ export default function SettingsPage() {
         </Typography>
         <Typography color="text.secondary">تغييرات الأوزان تحافظ على تاريخ الحركات.</Typography>
       </div>
-      <SettingsPanel settings={settings} variants={listActiveVariants()} />
+      <SettingsPanel settings={settings} variants={variants} />
     </Stack>
   );
 }

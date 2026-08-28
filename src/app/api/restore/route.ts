@@ -1,10 +1,9 @@
-import fs from "node:fs";
-import path from "node:path";
 import { NextResponse } from "next/server";
-import { restoreBackup } from "@/shared/backup/backup";
 import { validateMutation } from "@/modules/auth/infrastructure/session";
+import { restoreBackup } from "@/shared/backup/backup";
 
 export const runtime = "nodejs";
+
 export async function POST(request: Request) {
   if (!(await validateMutation(request)))
     return NextResponse.json({ error: "غير مصرح." }, { status: 403 });
@@ -13,14 +12,9 @@ export async function POST(request: Request) {
     const file = form.get("backup");
     if (!(file instanceof File) || file.size === 0)
       throw new Error("اختر ملف نسخة احتياطية صالحاً.");
-    const uploadDir = path.join(
-      process.env.DAIRY_BACKUP_PATH ?? path.join(process.cwd(), "backups"),
-      "uploads",
-    );
-    fs.mkdirSync(uploadDir, { recursive: true });
-    const uploadPath = path.join(uploadDir, `restore-${Date.now()}.sqlite`);
-    fs.writeFileSync(uploadPath, Buffer.from(await file.arrayBuffer()));
-    await restoreBackup(uploadPath);
+    if (file.size > 10 * 1024 * 1024) throw new Error("حجم النسخة الاحتياطية يتجاوز 10 ميجابايت.");
+    const backup = JSON.parse(await file.text()) as unknown;
+    await restoreBackup(backup);
     return NextResponse.redirect(new URL("/settings?restored=1", request.url));
   } catch (error) {
     return NextResponse.json(

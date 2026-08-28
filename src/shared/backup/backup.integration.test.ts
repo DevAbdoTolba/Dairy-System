@@ -1,26 +1,34 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import crypto from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { validateBackup } from "./backup";
 
-let tempDir = "";
-beforeEach(() => {
-  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dairy-backup-"));
-  process.env.DAIRY_DATABASE_PATH = path.join(tempDir, "data.sqlite");
-  process.env.DAIRY_BACKUP_PATH = path.join(tempDir, "backups");
+const describeMongo = process.env.MONGODB_URI ? describe : describe.skip;
+let previousDatabase: string | undefined;
+
+describe("backup validation", () => {
+  it("rejects a file that is not a Dairy MongoDB export", () => {
+    expect(() => validateBackup({ format: "sqlite" })).toThrow();
+  });
 });
-afterEach(async () => {
-  const db = await import("@/shared/db");
-  db.closeDatabaseForTests();
-  fs.rmSync(tempDir, { recursive: true, force: true });
-  delete process.env.DAIRY_DATABASE_PATH;
-  delete process.env.DAIRY_BACKUP_PATH;
-});
-describe("online backup", () => {
-  it("creates a verified readable backup", async () => {
-    const { createBackup, validateBackup } = await import("./backup");
+
+describeMongo("MongoDB backup", () => {
+  beforeEach(async () => {
+    previousDatabase = process.env.MONGODB_DB;
+    process.env.MONGODB_DB = `dairy_backup_test_${crypto.randomUUID().replaceAll("-", "")}`;
+  });
+
+  afterEach(async () => {
+    const { closeDatabaseForTests, getDb } = await import("@/shared/db");
+    await (await getDb()).dropDatabase();
+    await closeDatabaseForTests();
+    if (previousDatabase) process.env.MONGODB_DB = previousDatabase;
+    else delete process.env.MONGODB_DB;
+  });
+
+  it("creates a validated JSON backup", async () => {
+    const { createBackup } = await import("./backup");
     const backup = await createBackup();
-    expect(fs.existsSync(backup)).toBe(true);
-    expect(() => validateBackup(backup)).not.toThrow();
+    expect(validateBackup(backup).format).toBe("dairy-mongodb-export");
+    expect(backup.data.productVariants).toHaveLength(4);
   });
 });

@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const from = params.get("from") ?? `${todayInCairo().slice(0, 7)}-01`;
   const to = params.get("to") ?? todayInCairo();
-  return new NextResponse(reportCsv(from, to), {
+  return new NextResponse(await reportCsv(from, to), {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="dairy-report-${from}-${to}.csv"`,

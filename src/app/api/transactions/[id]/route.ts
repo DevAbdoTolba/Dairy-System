@@ -7,7 +7,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   if (!(await validateMutation(request)))
     return NextResponse.json({ error: "غير مصرح." }, { status: 403 });
   try {
-    undoTransaction((await params).id);
+    await undoTransaction((await params).id);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json(

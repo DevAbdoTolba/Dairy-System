@@ -1,36 +1,37 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-let tempDir = "";
-beforeEach(() => {
-  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dairy-test-"));
-  process.env.DAIRY_DATABASE_PATH = path.join(tempDir, "dairy.sqlite");
-});
-afterEach(async () => {
-  const db = await import("@/shared/db");
-  db.closeDatabaseForTests();
-  fs.rmSync(tempDir, { recursive: true, force: true });
-  delete process.env.DAIRY_DATABASE_PATH;
-});
-describe("SQLite transaction repository", () => {
-  it("migrates an empty database, persists movements and rejects negative sales", async () => {
-    const { listActiveVariants, getCurrentStock } =
-      await import("@/modules/inventory/infrastructure/repository");
+const describeMongo = process.env.MONGODB_URI ? describe : describe.skip;
+let previousDatabase: string | undefined;
+
+describeMongo("MongoDB transaction repository", () => {
+  beforeEach(async () => {
+    previousDatabase = process.env.MONGODB_DB;
+    process.env.MONGODB_DB = `dairy_test_${crypto.randomUUID().replaceAll("-", "")}`;
+  });
+
+  afterEach(async () => {
+    const { closeDatabaseForTests, getDb } = await import("@/shared/db");
+    await (await getDb()).dropDatabase();
+    await closeDatabaseForTests();
+    if (previousDatabase) process.env.MONGODB_DB = previousDatabase;
+    else delete process.env.MONGODB_DB;
+  });
+
+  it("initializes data, persists movements, and rejects negative sales", async () => {
+    const { listActiveVariants, getCurrentStock } = await import("@/modules/inventory");
     const { createTransaction, BusinessRuleError } = await import("../application/service");
-    const variant = listActiveVariants()[0];
+    const variant = (await listActiveVariants())[0];
     expect(variant.weightKg).toBe(5);
-    createTransaction({
+    await createTransaction({
       productVariantId: variant.id,
       type: "PRODUCTION",
       quantity: 3,
       businessDate: "2026-08-28",
       idempotencyKey: crypto.randomUUID(),
     });
-    expect(getCurrentStock(variant.id)).toBe(3);
-    expect(() =>
+    expect(await getCurrentStock(variant.id)).toBe(3);
+    await expect(
       createTransaction({
         productVariantId: variant.id,
         type: "SALE",
@@ -38,22 +39,22 @@ describe("SQLite transaction repository", () => {
         businessDate: "2026-08-28",
         idempotencyKey: crypto.randomUUID(),
       }),
-    ).toThrow(BusinessRuleError);
+    ).rejects.toBeInstanceOf(BusinessRuleError);
   });
+
   it("uses an idempotency key and supports ledger voiding", async () => {
-    const { listActiveVariants, getCurrentStock } =
-      await import("@/modules/inventory/infrastructure/repository");
+    const { listActiveVariants, getCurrentStock } = await import("@/modules/inventory");
     const { createTransaction, undoTransaction } = await import("../application/service");
-    const variant = listActiveVariants()[0];
+    const variant = (await listActiveVariants())[0];
     const idempotencyKey = crypto.randomUUID();
-    const first = createTransaction({
+    const first = await createTransaction({
       productVariantId: variant.id,
       type: "PRODUCTION",
       quantity: 2,
       businessDate: "2026-08-28",
       idempotencyKey,
     });
-    const duplicate = createTransaction({
+    const duplicate = await createTransaction({
       productVariantId: variant.id,
       type: "PRODUCTION",
       quantity: 2,
@@ -61,8 +62,8 @@ describe("SQLite transaction repository", () => {
       idempotencyKey,
     });
     expect(duplicate.duplicate).toBe(true);
-    expect(getCurrentStock(variant.id)).toBe(2);
-    undoTransaction(first.transaction.id);
-    expect(getCurrentStock(variant.id)).toBe(0);
+    expect(await getCurrentStock(variant.id)).toBe(2);
+    await undoTransaction(first.transaction.id);
+    expect(await getCurrentStock(variant.id)).toBe(0);
   });
 });

@@ -1,4 +1,3 @@
-import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
@@ -9,14 +8,24 @@ export default defineConfig({
   use: { baseURL: "http://127.0.0.1:3100", trace: "retain-on-failure" },
   projects: [
     { name: "mobile", use: { ...devices["Pixel 7"] } },
+    {
+      name: "tablet",
+      use: {
+        viewport: { width: 1180, height: 820 },
+        isMobile: true,
+        hasTouch: true,
+        deviceScaleFactor: 2,
+      },
+    },
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
   ],
   webServer: {
     command: "npm run dev -- --port 3100",
     env: {
       ...process.env,
-      DAIRY_DATABASE_PATH: path.join(process.cwd(), ".tmp", "e2e.sqlite"),
-      DAIRY_BACKUP_PATH: path.join(process.cwd(), ".tmp", "backups"),
+      DAIRY_NEXT_DIST_DIR: ".next-e2e",
+      MONGODB_URI: process.env.MONGODB_URI ?? "mongodb://127.0.0.1:27017/?directConnection=true",
+      MONGODB_DB: "dairy_e2e",
     },
     url: "http://127.0.0.1:3100/api/health",
     reuseExistingServer: !process.env.CI,

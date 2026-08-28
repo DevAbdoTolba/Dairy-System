@@ -1,4 +1,4 @@
-import { getSqlite } from "../src/shared/db";
+import { getDb } from "../src/shared/db";
 
-getSqlite();
-console.log("Database migrations are current.");
+await getDb();
+console.log("MongoDB indexes and default records are ready.");

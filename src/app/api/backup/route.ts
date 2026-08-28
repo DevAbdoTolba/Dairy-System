@@ -1,20 +1,20 @@
-import fs from "node:fs";
-import path from "node:path";
 import { NextResponse } from "next/server";
-import { createBackup, removeOldBackups } from "@/shared/backup/backup";
 import { hasOwnerSession } from "@/modules/auth/infrastructure/session";
+import { backupFileName, createBackup } from "@/shared/backup/backup";
 
 export const runtime = "nodejs";
+
 export async function GET() {
   if (!(await hasOwnerSession())) return NextResponse.json({ error: "غير مصرح." }, { status: 403 });
   try {
-    const backupPath = await createBackup();
-    removeOldBackups();
-    return new NextResponse(fs.readFileSync(backupPath), {
+    const backup = await createBackup();
+    const filename = backupFileName();
+    return new NextResponse(JSON.stringify(backup), {
       headers: {
-        "Content-Type": "application/vnd.sqlite3",
-        "Content-Disposition": `attachment; filename="${path.basename(backupPath)}"`,
-        "X-Backup-File": path.basename(backupPath),
+        "Content-Type": "application/json; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "X-Backup-File": filename,
+        "Cache-Control": "no-store",
       },
     });
   } catch (error) {

@@ -1,12 +1,13 @@
 import crypto from "node:crypto";
 import { createTransaction } from "../src/modules/transactions/application/service";
-import { listActiveVariants } from "../src/modules/inventory/infrastructure/repository";
+import { listActiveVariants } from "../src/modules/inventory";
 
 if (process.env.NODE_ENV === "production")
   throw new Error("The deterministic seed command is disabled in production.");
-const variants = listActiveVariants();
+
+const variants = await listActiveVariants();
 for (const [index, variant] of variants.entries()) {
-  createTransaction({
+  await createTransaction({
     productVariantId: variant.id,
     type: "PRODUCTION",
     quantity: 20 + index * 2,
@@ -14,7 +15,7 @@ for (const [index, variant] of variants.entries()) {
     note: "بيانات تجريبية",
     idempotencyKey: crypto.randomUUID(),
   });
-  createTransaction({
+  await createTransaction({
     productVariantId: variant.id,
     type: "SALE",
     quantity: 7 + index,
@@ -22,7 +23,7 @@ for (const [index, variant] of variants.entries()) {
     note: "بيانات تجريبية",
     idempotencyKey: crypto.randomUUID(),
   });
-  createTransaction({
+  await createTransaction({
     productVariantId: variant.id,
     type: "RETURN",
     quantity: 1,

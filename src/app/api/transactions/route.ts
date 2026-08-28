@@ -8,7 +8,7 @@ export async function POST(request: Request) {
   if (!(await validateMutation(request)))
     return NextResponse.json({ error: "انتهت جلسة الدخول أو الطلب غير آمن." }, { status: 403 });
   try {
-    const result = createTransaction(await request.json());
+    const result = await createTransaction(await request.json());
     return NextResponse.json(
       { transaction: result.transaction, duplicate: result.duplicate },
       { status: result.duplicate ? 200 : 201 },

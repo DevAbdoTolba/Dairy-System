@@ -1,6 +1,5 @@
 FROM node:24-alpine AS dependencies
 WORKDIR /app
-RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json ./
 RUN npm ci
 
@@ -23,7 +22,7 @@ COPY --from=build /app/public ./public
 COPY --from=build /app/src ./src
 COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/tsconfig.json ./tsconfig.json
-RUN mkdir /data /backups && chown -R dairy:dairy /app /data /backups
+RUN chown -R dairy:dairy /app
 USER dairy
 EXPOSE 3000
 CMD ["sh", "-c", "npm run db:migrate && npm run start"]

@@ -29,7 +29,7 @@ export default async function ReportsPage({
   const search = await searchParams;
   const from = search.from ?? firstDayOfMonth();
   const to = search.to ?? todayInCairo();
-  const report = getReport(from, to);
+  const report = await getReport(from, to);
   return (
     <Stack spacing={3}>
       <Box>

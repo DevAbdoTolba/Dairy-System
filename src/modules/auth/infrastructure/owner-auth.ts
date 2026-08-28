@@ -1,10 +1,25 @@
 import crypto from "node:crypto";
-import { getSqlite } from "@/shared/db";
+import { getDb } from "@/shared/db";
 
 const SCRYPT_KEY_LENGTH = 64;
 const MAX_ATTEMPTS = 5;
 const WINDOW_MS = 15 * 60 * 1000;
 const LOCK_MS = 15 * 60 * 1000;
+
+type OwnerAccount = {
+  _id: "owner";
+  username: "owner";
+  passwordHash: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type LoginAttempt = {
+  _id: string;
+  attempts: number;
+  windowStartedAt: string;
+  lockedUntil: string | null;
+};
 
 function hashPin(pin: string, salt = crypto.randomBytes(16).toString("hex")) {
   const digest = crypto.scryptSync(pin, salt, SCRYPT_KEY_LENGTH).toString("hex");
@@ -18,64 +33,70 @@ function verifyPin(pin: string, stored: string) {
   return crypto.timingSafeEqual(Buffer.from(candidate, "hex"), Buffer.from(digest, "hex"));
 }
 
-function ensureOwner() {
-  const sqlite = getSqlite();
-  const existing = sqlite.prepare("SELECT id FROM owner_accounts WHERE id = 1").get();
+async function ensureOwner() {
+  const db = await getDb();
+  const existing = await db.collection<OwnerAccount>("ownerAccounts").findOne({ _id: "owner" });
   if (existing) return;
   const pin = process.env.DAIRY_OWNER_PIN;
   if (!pin && process.env.NODE_ENV === "production") {
     throw new Error("DAIRY_OWNER_PIN is required in production before the first startup.");
   }
   const timestamp = new Date().toISOString();
-  sqlite
-    .prepare(
-      "INSERT INTO owner_accounts (id, username, password_hash, created_at, updated_at) VALUES (1, 'owner', ?, ?, ?)",
-    )
-    .run(hashPin(pin ?? "123456"), timestamp, timestamp);
+  await db.collection<OwnerAccount>("ownerAccounts").updateOne(
+    { _id: "owner" },
+    {
+      $setOnInsert: {
+        username: "owner",
+        passwordHash: hashPin(pin ?? "123456"),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    },
+    { upsert: true },
+  );
 }
 
-export function authenticateOwner(pin: string, subject: string) {
-  ensureOwner();
-  const sqlite = getSqlite();
+export async function authenticateOwner(pin: string, subject: string) {
+  await ensureOwner();
+  const db = await getDb();
+  const attempts = db.collection<LoginAttempt>("loginAttempts");
   const now = Date.now();
-  const attempt = sqlite
-    .prepare(
-      "SELECT attempts, window_started_at, locked_until FROM login_attempts WHERE subject = ?",
-    )
-    .get(subject) as
-    { attempts: number; window_started_at: string; locked_until: string | null } | undefined;
-  if (attempt?.locked_until && new Date(attempt.locked_until).valueOf() > now) {
+  const attempt = await attempts.findOne({ _id: subject });
+  if (attempt?.lockedUntil && new Date(attempt.lockedUntil).valueOf() > now) {
     throw new Error("تم إيقاف المحاولة مؤقتاً. أعد المحاولة بعد 15 دقيقة.");
   }
-  const account = sqlite.prepare("SELECT password_hash FROM owner_accounts WHERE id = 1").get() as {
-    password_hash: string;
-  };
-  if (verifyPin(pin, account.password_hash)) {
-    sqlite.prepare("DELETE FROM login_attempts WHERE subject = ?").run(subject);
+  const account = await db.collection<OwnerAccount>("ownerAccounts").findOne({ _id: "owner" });
+  if (!account) throw new Error("Owner account is unavailable.");
+  if (verifyPin(pin, account.passwordHash)) {
+    await attempts.deleteOne({ _id: subject });
     return true;
   }
-  const startedAt = attempt ? new Date(attempt.window_started_at).valueOf() : now;
-  const attempts = !attempt || now - startedAt > WINDOW_MS ? 1 : attempt.attempts + 1;
-  const lockedUntil = attempts >= MAX_ATTEMPTS ? new Date(now + LOCK_MS).toISOString() : null;
-  sqlite
-    .prepare(
-      `INSERT INTO login_attempts (subject, attempts, window_started_at, locked_until)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(subject) DO UPDATE SET attempts = excluded.attempts,
-          window_started_at = excluded.window_started_at, locked_until = excluded.locked_until`,
-    )
-    .run(subject, attempts, new Date(startedAt).toISOString(), lockedUntil);
+  const startedAt = attempt ? new Date(attempt.windowStartedAt).valueOf() : now;
+  const count = !attempt || now - startedAt > WINDOW_MS ? 1 : attempt.attempts + 1;
+  const lockedUntil = count >= MAX_ATTEMPTS ? new Date(now + LOCK_MS).toISOString() : null;
+  await attempts.updateOne(
+    { _id: subject },
+    {
+      $set: {
+        attempts: count,
+        windowStartedAt: new Date(startedAt).toISOString(),
+        lockedUntil,
+      },
+    },
+    { upsert: true },
+  );
   return false;
 }
 
-export function changeOwnerPin(currentPin: string, newPin: string) {
-  ensureOwner();
-  const sqlite = getSqlite();
-  const account = sqlite.prepare("SELECT password_hash FROM owner_accounts WHERE id = 1").get() as {
-    password_hash: string;
-  };
-  if (!verifyPin(currentPin, account.password_hash)) throw new Error("رمز الدخول الحالي غير صحيح.");
-  sqlite
-    .prepare("UPDATE owner_accounts SET password_hash = ?, updated_at = ? WHERE id = 1")
-    .run(hashPin(newPin), new Date().toISOString());
+export async function changeOwnerPin(currentPin: string, newPin: string) {
+  await ensureOwner();
+  const db = await getDb();
+  const accounts = db.collection<OwnerAccount>("ownerAccounts");
+  const account = await accounts.findOne({ _id: "owner" });
+  if (!account || !verifyPin(currentPin, account.passwordHash))
+    throw new Error("رمز الدخول الحالي غير صحيح.");
+  await accounts.updateOne(
+    { _id: "owner" },
+    { $set: { passwordHash: hashPin(newPin), updatedAt: new Date().toISOString() } },
+  );
 }

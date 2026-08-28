@@ -7,8 +7,8 @@ const settingsSchema = z.object({
   startDate: z.string().refine(isIsoDate, "التاريخ غير صحيح"),
 });
 
-export function saveSettings(input: unknown) {
-  updateSettings(settingsSchema.parse(input));
+export async function saveSettings(input: unknown) {
+  await updateSettings(settingsSchema.parse(input));
 }
 
 const variantSchema = z.object({
@@ -17,10 +17,10 @@ const variantSchema = z.object({
   visualToken: z.string().trim().min(2).max(50).default("weight-custom"),
 });
 
-export function createVariant(input: unknown) {
+export async function createVariant(input: unknown) {
   return addVariant(variantSchema.parse(input));
 }
 
-export function archiveVariant(id: string) {
-  if (!setVariantActive(id, false)) throw new Error("فئة الوزن غير موجودة.");
+export async function archiveVariant(id: string) {
+  if (!(await setVariantActive(id, false))) throw new Error("فئة الوزن غير موجودة.");
 }

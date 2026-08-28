@@ -7,7 +7,7 @@ export async function PUT(request: Request) {
   if (!(await validateMutation(request)))
     return NextResponse.json({ error: "غير مصرح." }, { status: 403 });
   try {
-    saveSettings(await request.json());
+    await saveSettings(await request.json());
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json(

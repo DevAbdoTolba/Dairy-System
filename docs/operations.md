@@ -1,35 +1,27 @@
 # تشغيل وصيانة ذاتية
 
-## Docker على الشبكة المحلية
+## Docker محلياً
 
 ```powershell
 Copy-Item .env.example .env
 notepad .env
 docker compose up -d --build
-docker compose logs -f
 docker compose ps
 ```
 
-اجعل `DAIRY_OWNER_PIN` رمزاً خاصاً و`DAIRY_SESSION_SECRET` قيمة عشوائية طويلة. تظل `data` و`backups` خارج طبقات الحاوية. فحص الصحة `http://localhost:3000/api/health` يهيئ المهاجرات ويفحص SQLite.
+يشغّل Compose MongoDB في حاوية منفصلة ويحتفظ بالبيانات في volume باسم `mongo-data`. لا تفتح منفذ MongoDB للشبكة العامة؛ الملف يربطه بـ `127.0.0.1` فقط. فحص الصحة `http://localhost:3000/api/health` يتحقق من MongoDB وينشئ الفهارس والسجلات الافتراضية.
 
-لإيجاد IP في Windows: `ipconfig` ثم افتح `http://IP:3000` على الهاتف الموجود في Wi-Fi نفسه. لا تفتح المنفذ للإنترنت. الوصول البعيد يحتاج HTTPS وVPN خاص مثل Tailscale.
+## النسخ الاحتياطي والاستعادة
 
-## النسخ الاحتياطي
+من صفحة الإعدادات نزّل نسخة JSON. أو نفّذ:
 
 ```powershell
 docker compose exec dairy-system npm run backup
-docker compose exec dairy-system npm run restore -- /backups/dairy-YYYY-MM-DD.sqlite
+docker compose exec dairy-system npm run restore -- /app/backups/dairy-backup-YYYY-MM-DD.json
 ```
 
-تستخدم النسخة API SQLite online backup، ثم `integrity_check`، ولا تنسخ ملف WAL وحده. الاستعادة تتحقق من الملف، تنشئ نسخة أمان للحالة الحالية، تستبدل القاعدة وتفحصها. أوقف الاستعمال أثناء الاستعادة.
+تحقق الاستعادة من صيغة النسخة ثم تستبدل البيانات داخل MongoDB transaction وتعيد بناء إسقاط الأرصدة من سجل الحركات. اختبر الاستعادة أولاً على قاعدة تجريبية، واحفظ النسخ خارج الخادم وفي مساحة مشفرة.
 
-أنشئ مهمة يومية على المضيف تستدعي `docker compose exec -T dairy-system npm run backup`. في Windows استخدم Task Scheduler؛ في Linux استخدم cron. السكربت يحذف نسخاً عمرها أكثر من 30 يوماً. اختبر الاستعادة في نسخة غير إنتاجية دورياً.
+## Vercel وAtlas
 
-## أوامر مفيدة
-
-```powershell
-docker compose stop
-docker compose start
-docker compose logs -f
-docker compose up -d --build
-```
+أضف `MONGODB_URI` و`MONGODB_DB` و`DAIRY_OWNER_PIN` و`DAIRY_SESSION_SECRET` في إعدادات Vercel. راجع [دليل Vercel وAtlas](vercel-atlas.md) للتفاصيل. لا تستخدم نسخة Vercel preview على قاعدة الإنتاج أثناء تجربة الاستعادة.

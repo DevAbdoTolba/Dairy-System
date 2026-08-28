@@ -1,5 +1,6 @@
 export {
   addVariant,
+  exportDatabase,
   findTransactionByIdempotencyKey,
   getCurrentStock,
   getInventorySummary,
@@ -9,6 +10,8 @@ export {
   insertTransaction,
   listActiveVariants,
   listTransactions,
+  reserveStockChange,
+  replaceDatabase,
   setVariantActive,
   updateSettings,
   voidTransaction,

@@ -26,9 +26,12 @@ type StoredEntry = {
 export function TransactionForm({
   type,
   variants,
+  embedded = false,
 }: {
   type: TransactionType;
   variants: ProductVariant[];
+  /** Removes the outer card when this form is placed inside the tablet workbench. */
+  embedded?: boolean;
 }) {
   const quantityRef = useRef<HTMLInputElement>(null);
   const [variantId, setVariantId] = useState(variants[0]?.id ?? "");
@@ -134,8 +137,18 @@ export function TransactionForm({
   }
 
   return (
-    <Paper component="form" onSubmit={submit} sx={{ p: { xs: 2, sm: 3 }, maxWidth: 760 }}>
-      <Stack spacing={3}>
+    <Paper
+      component="form"
+      onSubmit={submit}
+      elevation={embedded ? 0 : 1}
+      sx={{
+        p: embedded ? 0 : { xs: 2, sm: 3 },
+        maxWidth: embedded ? "none" : 760,
+        bgcolor: embedded ? "transparent" : undefined,
+        border: embedded ? 0 : undefined,
+      }}
+    >
+      <Stack spacing={{ xs: 2.5, md: 3 }}>
         <Box>
           <Typography variant="h1">إضافة {meta.label}</Typography>
           <Typography color="text.secondary">اختر الوزن ثم الكمية واحفظ.</Typography>

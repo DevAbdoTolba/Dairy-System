@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  serverExternalPackages: ["mongodb"],
+  // Keeps Playwright isolated when the owner is already using `npm run dev`.
+  distDir: process.env.DAIRY_NEXT_DIST_DIR ?? ".next",
   allowedDevOrigins: ["127.0.0.1"],
   async headers() {
     return [

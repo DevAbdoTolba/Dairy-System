@@ -52,7 +52,7 @@ export function SettingsPanel({
     const blob = await response.blob();
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = response.headers.get("x-backup-file") ?? "dairy-backup.sqlite";
+    link.download = response.headers.get("x-backup-file") ?? "dairy-backup.json";
     link.click();
     URL.revokeObjectURL(link.href);
     setMessage("تم إنشاء وتنزيل نسخة احتياطية تم التحقق منها.");
@@ -189,7 +189,7 @@ export function SettingsPanel({
             >
               <Stack spacing={1}>
                 <Typography variant="h3">استعادة نسخة</Typography>
-                <input name="backup" type="file" accept=".sqlite,application/x-sqlite3" required />
+                <input name="backup" type="file" accept=".json,application/json" required />
                 <Button type="submit" color="warning" variant="outlined">
                   استعادة النسخة المحددة
                 </Button>

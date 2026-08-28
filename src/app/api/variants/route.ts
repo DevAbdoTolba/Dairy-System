@@ -7,7 +7,7 @@ export async function POST(request: Request) {
   if (!(await validateMutation(request)))
     return NextResponse.json({ error: "غير مصرح." }, { status: 403 });
   try {
-    return NextResponse.json(createVariant(await request.json()), { status: 201 });
+    return NextResponse.json(await createVariant(await request.json()), { status: 201 });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "تعذر إضافة الفئة." },

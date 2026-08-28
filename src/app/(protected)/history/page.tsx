@@ -21,14 +21,14 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
   const type = transactionTypes.includes(search.type as (typeof transactionTypes)[number])
     ? (search.type as (typeof transactionTypes)[number])
     : undefined;
-  const entries = listTransactions({
+  const entries = await listTransactions({
     from: search.from,
     to: search.to,
     type,
     variantId: search.variant,
     includeVoided: search.voided === "1",
   });
-  const variants = listActiveVariants();
+  const variants = await listActiveVariants();
   return (
     <Stack spacing={3}>
       <Box>

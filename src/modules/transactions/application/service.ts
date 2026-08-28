@@ -1,13 +1,14 @@
 import crypto from "node:crypto";
+import { MongoServerError } from "mongodb";
 import { z } from "zod";
-import { getSqlite } from "@/shared/db";
+import { withMongoTransaction } from "@/shared/db";
 import { isIsoDate } from "@/shared/dates/business-date";
 import {
   findTransactionByIdempotencyKey,
-  getCurrentStock,
   getTransaction,
   getVariant,
   insertTransaction,
+  reserveStockChange,
   voidTransaction,
 } from "@/modules/inventory";
 import {
@@ -36,53 +37,63 @@ function lowersStock(type: TransactionType) {
   return type === "SALE" || type === "ADJUSTMENT_OUT";
 }
 
-export function createTransaction(rawInput: CreateTransactionInput) {
+export async function createTransaction(rawInput: CreateTransactionInput) {
   const input = transactionSchema.parse(rawInput);
-  return getSqlite().transaction(() => {
-    const existing = findTransactionByIdempotencyKey(input.idempotencyKey);
-    if (existing) return { transaction: existing, duplicate: true };
-    if (!getVariant(input.productVariantId)) throw new BusinessRuleError("فئة الوزن غير موجودة.");
-    const stock = getCurrentStock(input.productVariantId);
-    if (lowersStock(input.type) && stock < input.quantity) {
-      if (!input.allowNegative) throw new BusinessRuleError("لا يمكن أن يصبح الرصيد سالباً.");
-      if (!input.overrideReason)
+  try {
+    return await withMongoTransaction(async (session) => {
+      const existing = await findTransactionByIdempotencyKey(input.idempotencyKey, { session });
+      if (existing) return { transaction: existing, duplicate: true };
+      if (!(await getVariant(input.productVariantId, { session })))
+        throw new BusinessRuleError("فئة الوزن غير موجودة.");
+      if (input.allowNegative && !input.overrideReason)
         throw new BusinessRuleError("سبب التجاوز مطلوب عند السماح برصيد سالب.");
+
+      const transaction: InventoryTransaction = {
+        id: crypto.randomUUID(),
+        productVariantId: input.productVariantId,
+        type: input.type,
+        quantity: input.quantity,
+        businessDate: input.businessDate,
+        note: input.note || null,
+        overrideReason: input.overrideReason || null,
+        status: "ACTIVE",
+        reversesTransactionId: input.reversesTransactionId ?? null,
+        idempotencyKey: input.idempotencyKey,
+        createdAt: new Date().toISOString(),
+        voidedAt: null,
+      };
+      const accepted = await reserveStockChange(transaction, input.allowNegative, { session });
+      if (lowersStock(input.type) && !accepted)
+        throw new BusinessRuleError("لا يمكن أن يصبح الرصيد سالباً.");
+      await insertTransaction(transaction, { session });
+      return { transaction, duplicate: false };
+    });
+  } catch (error) {
+    if (error instanceof MongoServerError && error.code === 11000) {
+      const existing = await findTransactionByIdempotencyKey(input.idempotencyKey);
+      if (existing) return { transaction: existing, duplicate: true };
     }
-    const transaction: InventoryTransaction = {
-      id: crypto.randomUUID(),
-      productVariantId: input.productVariantId,
-      type: input.type,
-      quantity: input.quantity,
-      businessDate: input.businessDate,
-      note: input.note || null,
-      overrideReason: input.overrideReason || null,
-      status: "ACTIVE",
-      reversesTransactionId: input.reversesTransactionId ?? null,
-      idempotencyKey: input.idempotencyKey,
-      createdAt: new Date().toISOString(),
-      voidedAt: null,
-    };
-    insertTransaction(transaction);
-    return { transaction, duplicate: false };
-  })();
+    throw error;
+  }
 }
 
-export function undoTransaction(id: string) {
-  const transaction = getTransaction(id);
-  if (!transaction) throw new BusinessRuleError("الحركة غير موجودة.");
-  if (transaction.status === "VOIDED") throw new BusinessRuleError("تم إلغاء هذه الحركة بالفعل.");
-  if (!voidTransaction(id)) throw new BusinessRuleError("تعذر إلغاء الحركة.");
+export async function undoTransaction(id: string) {
+  await withMongoTransaction(async (session) => {
+    const transaction = await getTransaction(id, { session });
+    if (!transaction) throw new BusinessRuleError("الحركة غير موجودة.");
+    if (transaction.status === "VOIDED") throw new BusinessRuleError("تم إلغاء هذه الحركة بالفعل.");
+    if (!(await voidTransaction(id, { session })))
+      throw new BusinessRuleError("تعذر إلغاء الحركة.");
+  });
 }
 
-export function correctTransaction(
+export async function correctTransaction(
   id: string,
   replacement: Omit<CreateTransactionInput, "reversesTransactionId">,
 ) {
-  const original = getTransaction(id);
+  const original = await getTransaction(id);
   if (!original || original.status !== "ACTIVE")
     throw new BusinessRuleError("لا يمكن تصحيح هذه الحركة.");
-  return getSqlite().transaction(() => {
-    undoTransaction(id);
-    return createTransaction({ ...replacement, reversesTransactionId: id });
-  })();
+  await undoTransaction(id);
+  return createTransaction({ ...replacement, reversesTransactionId: id });
 }

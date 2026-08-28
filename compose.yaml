@@ -1,17 +1,37 @@
 services:
+  mongodb:
+    image: mongo:8
+    container_name: dairy-mongodb
+    restart: unless-stopped
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'mongosh --quiet --eval "try { rs.status().ok } catch (error) { rs.initiate({_id: ''rs0'', members: [{_id: 0, host: ''mongodb:27017''}]}).ok }"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   dairy-system:
     build: .
     container_name: dairy-system
     restart: unless-stopped
     env_file: .env
     environment:
-      DAIRY_DATABASE_PATH: /data/dairy.sqlite
-      DAIRY_BACKUP_PATH: /backups
+      MONGODB_URI: mongodb://mongodb:27017
+      MONGODB_DB: ${MONGODB_DB:-dairy_system}
+    depends_on:
+      mongodb:
+        condition: service_healthy
     ports:
       - "0.0.0.0:3000:3000"
-    volumes:
-      - ./data:/data
-      - ./backups:/backups
     healthcheck:
       test:
         [
@@ -24,3 +44,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+
+volumes:
+  mongo-data:

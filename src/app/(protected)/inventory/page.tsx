@@ -5,8 +5,8 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { getInventorySummary } from "@/modules/inventory";
 
-export default function InventoryPage() {
-  const inventory = getInventorySummary();
+export default async function InventoryPage() {
+  const inventory = await getInventorySummary();
   const totalKilograms = inventory.reduce((sum, item) => sum + item.kilograms, 0);
   return (
     <Stack spacing={3}>

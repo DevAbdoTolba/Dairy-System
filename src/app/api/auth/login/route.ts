@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   try {
     const { pin } = schema.parse(await request.json());
     const subject = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
-    if (!authenticateOwner(pin, subject))
+    if (!(await authenticateOwner(pin, subject)))
       return NextResponse.json({ error: "رمز الدخول غير صحيح." }, { status: 401 });
     await startOwnerSession();
     return NextResponse.json({ ok: true });

@@ -9,7 +9,7 @@ export default async function TransactionPage({ params }: { params: Promise<{ ty
   return (
     <TransactionForm
       type={type as (typeof transactionTypes)[number]}
-      variants={listActiveVariants()}
+      variants={await listActiveVariants()}
     />
   );
 }
