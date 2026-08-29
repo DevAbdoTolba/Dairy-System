@@ -5,6 +5,7 @@ import HistoryOutlinedIcon from "@mui/icons-material/HistoryOutlined";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import SpaceDashboardOutlinedIcon from "@mui/icons-material/SpaceDashboardOutlined";
+import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
 import AppBar from "@mui/material/AppBar";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -22,6 +23,7 @@ const links = [
   ["/inventory", "المخزون", Inventory2OutlinedIcon],
   ["/history", "السجل", HistoryOutlinedIcon],
   ["/reports", "التقارير", AssessmentOutlinedIcon],
+  ["/suppliers", "الموردون", PeopleAltOutlinedIcon],
   ["/settings", "الإعدادات", SettingsOutlinedIcon],
 ] as const;
 

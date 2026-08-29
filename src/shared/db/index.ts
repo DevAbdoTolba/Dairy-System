@@ -56,6 +56,18 @@ async function prepareDatabase() {
       .collection<StoredDocument>("inventoryTransactions")
       .createIndex({ productVariantId: 1, status: 1 }),
     db.collection<StoredDocument>("loginAttempts").createIndex({ lockedUntil: 1 }),
+    db.collection<StoredDocument>("suppliers").createIndex({ active: 1, sortOrder: 1, sortKey: 1 }),
+    db
+      .collection<StoredDocument>("supplierShifts")
+      .createIndex({ businessDate: 1, type: 1 }, { unique: true, name: "shift_date_type_unique" }),
+    db.collection<StoredDocument>("supplierShifts").createIndex({ status: 1, businessDate: -1 }),
+    db.collection<StoredDocument>("supplierMilkEntries").createIndex({ shiftId: 1, createdAt: 1 }),
+    db
+      .collection<StoredDocument>("supplierMilkEntries")
+      .createIndex({ supplierId: 1, businessDate: -1 }),
+    db
+      .collection<StoredDocument>("supplierEvents")
+      .createIndex({ aggregateType: 1, aggregateId: 1, createdAt: 1 }),
   ]);
 
   await db.collection<StoredDocument>("appSettings").updateOne(
