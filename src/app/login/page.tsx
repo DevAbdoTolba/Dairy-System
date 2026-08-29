@@ -6,7 +6,7 @@ import { LoginForm } from "./login-form";
 export const dynamic = "force-dynamic";
 export default async function LoginPage() {
   const session = await getSession();
-  if (session) redirect(session.role === "OWNER" ? "/dashboard" : "/pos");
+  if (session) redirect("/pos");
   return (
     <Box
       component="main"

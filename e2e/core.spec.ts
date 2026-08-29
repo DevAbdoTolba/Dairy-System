@@ -5,7 +5,8 @@ async function login(page: import("@playwright/test").Page) {
   await page.goto("/login");
   await page.getByLabel("رمز المالك").fill("123456");
   await page.getByRole("button", { name: "دخول" }).click();
-  await expect(page).toHaveURL(/dashboard/);
+  await expect(page).toHaveURL(/\/pos/);
+  await page.goto("/dashboard");
 }
 test("owner can record production, sale and return while protecting stock", async ({
   page,

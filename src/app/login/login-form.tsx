@@ -39,7 +39,7 @@ export function LoginForm() {
       if (!response.ok) throw new Error(result.error ?? "تعذر تسجيل الدخول.");
       if (role === "POS" && result.credentialVersion)
         await savePosCredentialVerifier(pin, result.credentialVersion).catch(() => undefined);
-      router.push(result.redirectTo ?? (role === "OWNER" ? "/dashboard" : "/pos"));
+      router.push(result.redirectTo ?? "/pos");
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تعذر تسجيل الدخول.");
