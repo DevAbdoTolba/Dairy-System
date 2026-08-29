@@ -61,6 +61,21 @@ function verifyPin(pin: string, stored: string) {
   );
 }
 
+function accountFromPin(
+  details: ReturnType<typeof accountDetails>,
+  pin: string,
+): CredentialAccount {
+  const timestamp = new Date().toISOString();
+  return {
+    _id: details.id,
+    username: details.username,
+    passwordHash: hashPin(pin),
+    credentialVersion: 1,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 async function ensureAccount(role: Role) {
   const details = accountDetails(role);
   const db = await getDb();
@@ -70,17 +85,13 @@ async function ensureAccount(role: Role) {
 
   const pin = process.env[details.envPin];
   if (!pin && process.env.NODE_ENV === "production") {
-    throw new Error(`${details.envPin} is required in production before the first startup.`);
+    throw new Error(
+      role === "OWNER"
+        ? "رمز المالك غير مضبوط في إعدادات التطبيق."
+        : "رمز استلام اللبن غير مضبوط بعد. سجّل دخولك كمالك واضبطه من الإعدادات.",
+    );
   }
-  const timestamp = new Date().toISOString();
-  const account: CredentialAccount = {
-    _id: details.id,
-    username: details.username,
-    passwordHash: hashPin(pin ?? "123456"),
-    credentialVersion: 1,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
+  const account = accountFromPin(details, pin ?? "123456");
   await accounts.insertOne(account);
   return account;
 }
@@ -133,9 +144,14 @@ export async function getCredentialVersion(role: Role) {
 
 async function changePin(role: Role, newPin: string) {
   const details = accountDetails(role);
-  await ensureAccount(role);
   const db = await getDb();
-  await db.collection<CredentialAccount>(details.collection).updateOne(
+  const accounts = db.collection<CredentialAccount>(details.collection);
+  const existing = await accounts.findOne({ _id: details.id });
+  if (!existing) {
+    await accounts.insertOne(accountFromPin(details, newPin));
+    return;
+  }
+  await accounts.updateOne(
     { _id: details.id },
     {
       $set: { passwordHash: hashPin(newPin), updatedAt: new Date().toISOString() },

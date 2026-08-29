@@ -4,7 +4,7 @@ async function loginOwner(page: import("@playwright/test").Page) {
   await page.goto("/login");
   await page.getByLabel("رمز المالك").fill("123456");
   await page.getByRole("button", { name: "دخول" }).click();
-  await expect(page).toHaveURL(/\/pos/);
+  await expect(page).toHaveURL(/dashboard/);
 }
 
 test("POS records and closes a supplier shift without owner navigation", async ({

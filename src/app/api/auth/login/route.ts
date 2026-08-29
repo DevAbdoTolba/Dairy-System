@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { roles } from "@/modules/auth/domain/role";
+import { roles, type Role } from "@/modules/auth/domain/role";
 import { authenticateOwner, authenticatePos } from "@/modules/auth/infrastructure/owner-auth";
 import { startSession } from "@/modules/auth/infrastructure/session";
 
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
         : await authenticatePos(pin, subject);
     if (!credential) return NextResponse.json({ error: "رمز الدخول غير صحيح." }, { status: 401 });
     await startSession(credential);
-    const redirectTo = redirectForRole();
+    const redirectTo = redirectForRole(role);
     return NextResponse.json({
       ok: true,
       role,
@@ -32,6 +32,6 @@ export async function POST(request: Request) {
   }
 }
 
-function redirectForRole() {
-  return "/pos";
+function redirectForRole(role: Role) {
+  return role === "OWNER" ? "/dashboard" : "/pos";
 }

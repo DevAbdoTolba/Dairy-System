@@ -72,7 +72,7 @@ requirePosOrOwner();
 validateMutation(request, allowedRoles);
 ```
 
-The login screen asks whether the user is entering as owner or milk-collection POS, then validates the corresponding PIN. Both roles land at `/pos` so milk collection is ready immediately; the owner can still open the unchanged cheese dashboard at `/dashboard`. The current owner hashing/rate-limit style is retained. The owner can rotate the POS PIN; rotation increments `credentialVersion` and invalidates server-side POS sessions on their next online request.
+The login screen asks whether the user is entering as owner or milk-collection POS, then validates the corresponding PIN. Owner goes to `/dashboard`; POS goes to `/pos`. The current owner hashing/rate-limit style is retained. The owner can rotate the POS PIN; rotation increments `credentialVersion` and invalidates server-side POS sessions on their next online request.
 
 POS pages use a dedicated minimal `PosShell`. Owner-only navigation, reports, settings, balances, price screens, and settlement screens are never rendered or fetched for a POS session.
 
