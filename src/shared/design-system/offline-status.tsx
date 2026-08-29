@@ -1,6 +1,5 @@
 "use client";
 
-import CloudDoneOutlinedIcon from "@mui/icons-material/CloudDoneOutlined";
 import CloudOffOutlinedIcon from "@mui/icons-material/CloudOffOutlined";
 import NotificationsActiveOutlinedIcon from "@mui/icons-material/NotificationsActiveOutlined";
 import SyncOutlinedIcon from "@mui/icons-material/SyncOutlined";
@@ -98,6 +97,7 @@ export function OfflineStatus() {
 
   const pending = entries.filter((entry) => entry.state === "pending");
   const failed = entries.filter((entry) => entry.state === "failed");
+  const needsAttention = !online || pending.length > 0 || failed.length > 0;
 
   async function enableNotifications() {
     setNotificationPermission(await enableOfflineNotifications());
@@ -111,13 +111,29 @@ export function OfflineStatus() {
     if (result.synced > 0) router.refresh();
   }
 
+  if (!needsAttention) {
+    return notificationPermission === "default" ? (
+      <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 1 }}>
+        <Button
+          type="button"
+          size="small"
+          variant="text"
+          startIcon={<NotificationsActiveOutlinedIcon />}
+          onClick={enableNotifications}
+        >
+          تفعيل التنبيهات
+        </Button>
+      </Box>
+    ) : null;
+  }
+
   return (
     <Paper
       component="section"
       aria-label="حالة الاتصال والمزامنة"
       aria-live="polite"
       variant="outlined"
-      sx={{ mb: 2.5, p: 1.25 }}
+      sx={{ mb: 1.5, p: 1 }}
     >
       <Stack
         direction={{ xs: "column", sm: "row" }}
@@ -125,12 +141,7 @@ export function OfflineStatus() {
         sx={{ alignItems: { sm: "center" } }}
       >
         <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", flexGrow: 1 }}>
-          <Chip
-            icon={online ? <CloudDoneOutlinedIcon /> : <CloudOffOutlinedIcon />}
-            label={online ? "متصل" : "دون إنترنت"}
-            color={online ? "success" : "warning"}
-            variant={online ? "outlined" : "filled"}
-          />
+          {!online && <Chip icon={<CloudOffOutlinedIcon />} label="دون إنترنت" color="warning" />}
           {pending.length > 0 && <Chip label={`${pending.length} بانتظار المزامنة`} color="info" />}
           {failed.length > 0 && <Chip label={`${failed.length} تحتاج مراجعة`} color="error" />}
         </Stack>

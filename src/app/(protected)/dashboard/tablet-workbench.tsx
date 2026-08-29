@@ -5,12 +5,12 @@ import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import KeyboardReturnOutlinedIcon from "@mui/icons-material/KeyboardReturnOutlined";
 import PointOfSaleOutlinedIcon from "@mui/icons-material/PointOfSaleOutlined";
 import SpaceDashboardOutlinedIcon from "@mui/icons-material/SpaceDashboardOutlined";
-import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardActionArea from "@mui/material/CardActionArea";
 import CardContent from "@mui/material/CardContent";
+import Chip from "@mui/material/Chip";
 import Grid from "@mui/material/Grid";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -275,19 +275,30 @@ function DashboardOverview({
   onStartProduction: (productVariantId: string) => void;
 }) {
   return (
-    <Stack spacing={2.5}>
-      <Box>
-        <Typography component="h2" variant="h2">
-          الرصيد الحالي
-        </Typography>
-        <Typography color="text.secondary">
-          هذه الأرقام هي الرصيد الفعلي بعد آخر حركة محفوظة.
-        </Typography>
-      </Box>
-      {dashboard.noEntriesToday && <Alert severity="warning">لم يتم تسجيل حركة اليوم.</Alert>}
-      {dashboard.noEntriesYesterday && (
-        <Alert severity="info">تنبيه: لم تُسجل حركة أمس. راجع يوم الإغلاق عند الحاجة.</Alert>
-      )}
+    <Stack spacing={2}>
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={1}
+        useFlexGap
+        sx={{ justifyContent: "space-between", alignItems: { sm: "flex-start" } }}
+      >
+        <Box>
+          <Typography component="h2" variant="h2">
+            الرصيد الحالي
+          </Typography>
+          <Typography color="text.secondary">الأرصدة بعد آخر حركة محفوظة.</Typography>
+        </Box>
+        {(dashboard.noEntriesToday || dashboard.noEntriesYesterday) && (
+          <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap" }}>
+            {dashboard.noEntriesToday && (
+              <Chip size="small" color="warning" variant="outlined" label="اليوم: لا حركة" />
+            )}
+            {dashboard.noEntriesYesterday && (
+              <Chip size="small" color="info" variant="outlined" label="أمس: لا حركة" />
+            )}
+          </Stack>
+        )}
+      </Stack>
       <Grid container spacing={1.5}>
         {dashboard.inventory.map((item) => (
           <Grid key={item.id} size={{ xs: 6, sm: 4, md: 6 }}>
