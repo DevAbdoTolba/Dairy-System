@@ -323,10 +323,10 @@ Commit: `feat(suppliers): add milk shifts and exact quantity ledger`
 
 ### Phase 4 — Tablet POS collection workspace
 
-1. Add the compact shift picker/header and POS-safe bootstrap.
+1. Add the two direct morning/night shift blocks and POS-safe bootstrap. Tapping one starts the shift immediately and requests full-screen mode when the browser allows it.
 2. Add separate top-three placeholder strip and stable token trie; unique remaining supplier auto-selects.
 3. Add the two-column tablet workspace, milk-type controls, exact satl/cup/quarter pad, save confirmation, and current-shift timeline.
-4. Keep the supplier selected after the first milk type and offer the other type directly.
+4. Keep the supplier selected after the first milk type and offer the other type directly. The selector fills the viewport with a selected-name box, an unlabeled horizontal prediction-chip row, and stable word buttons; history opens only on demand, never below the selector.
 5. Add edit/delete confirmation for open-shift milk and retain exceptional manual reselection.
 6. Test RTL, focus order, accessible names, 44 px minimum targets, 200% zoom, 1180 × 820 no routine page scroll, mobile stacking, and no horizontal overflow.
 

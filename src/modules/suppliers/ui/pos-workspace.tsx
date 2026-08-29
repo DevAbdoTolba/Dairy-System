@@ -6,7 +6,6 @@ import ReplayOutlinedIcon from "@mui/icons-material/ReplayOutlined";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -17,7 +16,7 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PosBootstrap } from "../application/pos-service";
 import {
   quantityFromParts,
@@ -35,10 +34,8 @@ import {
   readCachedPosWorkspace,
   syncPersistedSupplierCommand,
   flushSupplierOutbox,
-  listSupplierOutbox,
   type SupplierEndpoint,
 } from "@/shared/offline/supplier-offline";
-import { listenForQueueChanges } from "@/shared/offline/offline-store";
 import {
   createLocalShiftSnapshot,
   downloadLocalShiftSnapshot,
@@ -60,27 +57,6 @@ async function json<T>(response: Response): Promise<T & { error?: string }> {
   return (await response.json()) as T & { error?: string };
 }
 
-function cairoTime(value: string) {
-  return new Intl.DateTimeFormat("ar-EG", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Africa/Cairo",
-  }).format(new Date(value));
-}
-
-function subscribeToConnection(callback: () => void) {
-  window.addEventListener("online", callback);
-  window.addEventListener("offline", callback);
-  return () => {
-    window.removeEventListener("online", callback);
-    window.removeEventListener("offline", callback);
-  };
-}
-
-function currentConnection() {
-  return navigator.onLine;
-}
-
 function piastersFromEgp(value: string) {
   const normalized = value.trim().replace("٫", ".");
   const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(normalized);
@@ -99,7 +75,6 @@ export function PosWorkspace({
   credentialRole: Role;
 }) {
   const [data, setData] = useState<PosBootstrap | null>(null);
-  const [selectedShiftType, setSelectedShiftType] = useState<ShiftType>("MORNING");
   const [prefix, setPrefix] = useState<string[]>([]);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [milkType, setMilkType] = useState<MilkType>("COW");
@@ -112,10 +87,7 @@ export function PosWorkspace({
   const [editingEntry, setEditingEntry] = useState<TimelineEntry | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [pendingSyncCount, setPendingSyncCount] = useState(0);
-  const [failedSyncCount, setFailedSyncCount] = useState(0);
-  const online = useSyncExternalStore(subscribeToConnection, currentConnection, () => true);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const selectedSupplier =
     data?.suppliers.find((supplier) => supplier.id === selectedSupplierId) ?? null;
@@ -143,15 +115,6 @@ export function PosWorkspace({
     [credentialRole],
   );
 
-  const refreshOutbox = useCallback(() => {
-    void listSupplierOutbox()
-      .then((entries) => {
-        setPendingSyncCount(entries.filter((entry) => entry.state === "pending").length);
-        setFailedSyncCount(entries.filter((entry) => entry.state === "failed").length);
-      })
-      .catch(() => undefined);
-  }, []);
-
   useEffect(() => {
     void readCachedPosWorkspace<PosBootstrap>().then((cached) => {
       if (cached?.shift.businessDate !== businessDate) return;
@@ -159,11 +122,6 @@ export function PosWorkspace({
       if (navigator.onLine) void loadBootstrap(cached.shift.id).catch(() => undefined);
     });
   }, [businessDate, loadBootstrap]);
-
-  useEffect(() => {
-    refreshOutbox();
-    return listenForQueueChanges(refreshOutbox);
-  }, [refreshOutbox]);
 
   useEffect(() => {
     const syncWhenOnline = () => {
@@ -176,10 +134,15 @@ export function PosWorkspace({
     return () => window.removeEventListener("online", syncWhenOnline);
   }, [data?.shift.id, loadBootstrap]);
 
-  async function openShift() {
+  function enterFullscreen() {
+    if (document.fullscreenEnabled && !document.fullscreenElement)
+      void document.documentElement.requestFullscreen().catch(() => undefined);
+  }
+
+  async function openShift(type: ShiftType) {
+    enterFullscreen();
     setBusy(true);
     setError(null);
-    setMessage(null);
     try {
       const cached = await readCachedPosWorkspace<PosBootstrap>();
       const shiftId = requestId();
@@ -187,7 +150,7 @@ export function PosWorkspace({
         shift: {
           id: shiftId,
           businessDate,
-          type: selectedShiftType,
+          type,
           status: "OPEN",
           openedAt: new Date().toISOString(),
           closedAt: null,
@@ -207,16 +170,11 @@ export function PosWorkspace({
         id: requestId(),
         endpoint: "/api/supplier-shifts",
         method: "POST",
-        payload: { commandId: requestId(), shiftId, businessDate, type: selectedShiftType },
+        payload: { commandId: requestId(), shiftId, businessDate, type },
       });
       setData(localData);
       const result = await syncPersistedSupplierCommand<{ shift: { id: string } }>(entry);
       if (result.status === "synced" && result.data) await loadBootstrap(result.data.shift.id);
-      setMessage(
-        result.status === "synced"
-          ? "تم فتح الوردية ومزامنتها."
-          : "تم حفظ الوردية على الجهاز بانتظار المزامنة.",
-      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تعذر فتح الوردية.");
     } finally {
@@ -239,7 +197,6 @@ export function PosWorkspace({
     setCups(0);
     setQuarters(0);
     setPrefix([]);
-    setMessage(null);
   }
 
   function finishSupplier() {
@@ -263,7 +220,6 @@ export function PosWorkspace({
     setQuarters(parts.quarters);
     setEditingEntry(entry);
     setPrefix([]);
-    setMessage("عدّل الكمية ثم احفظ التعديل.");
   }
 
   async function saveMilk() {
@@ -324,13 +280,6 @@ export function PosWorkspace({
       setQuarters(0);
       const result = await syncPersistedSupplierCommand<{ entry: TimelineEntry }>(outboxEntry);
       if (result.status === "synced") await loadBootstrap(data.shift.id);
-      setMessage(
-        result.status === "synced"
-          ? editingEntry
-            ? "تم تعديل الحركة."
-            : "تم حفظ اللبن."
-          : "تم حفظ الحركة على الجهاز بانتظار المزامنة.",
-      );
     } catch (caught) {
       setData(data);
       void cachePosWorkspace(data);
@@ -372,11 +321,6 @@ export function PosWorkspace({
       setData(localData);
       const result = await syncPersistedSupplierCommand<{ entry: TimelineEntry }>(outboxEntry);
       if (result.status === "synced") await loadBootstrap(data.shift.id);
-      setMessage(
-        result.status === "synced"
-          ? "تم حذف الحركة من الوردية المفتوحة."
-          : "تم حفظ الحذف على الجهاز بانتظار المزامنة.",
-      );
     } catch (caught) {
       setData(data);
       void cachePosWorkspace(data);
@@ -424,11 +368,6 @@ export function PosWorkspace({
       setCashEgp("");
       const result = await syncPersistedSupplierCommand<{ movement: { id: string } }>(outboxEntry);
       if (result.status === "synced") await loadBootstrap(data.shift.id);
-      setMessage(
-        result.status === "synced"
-          ? "تم تسجيل النقد للمورد؛ سيظهر لصاحب المعمل للمراجعة."
-          : "تم حفظ النقد على الجهاز بانتظار المزامنة.",
-      );
     } catch (caught) {
       setData(data);
       void cachePosWorkspace(data);
@@ -485,11 +424,6 @@ export function PosWorkspace({
       });
       const result = await flushSupplierOutbox();
       if (navigator.onLine && result.synced > 0) await loadBootstrap(data.shift.id);
-      setMessage(
-        navigator.onLine
-          ? "تم حفظ إغلاق الوردية محليًا. ستكتمل المزامنة بالترتيب عند توفر الجلسة والاتصال."
-          : "تم إغلاق الوردية وحفظ لقطة آمنة على الجهاز. ستتم المزامنة عند عودة الإنترنت.",
-      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تعذر إغلاق الوردية.");
     } finally {
@@ -499,138 +433,108 @@ export function PosWorkspace({
 
   if (!data) {
     return (
-      <Paper component="main" sx={{ p: { xs: 2, sm: 3 }, maxWidth: 720, mx: "auto" }}>
-        <Stack spacing={2.5}>
-          <Box>
-            <Typography component="h1" variant="h1">
-              استلام اللبن
-            </Typography>
-            <Typography color="text.secondary">{formatArabicDate(businessDate)}</Typography>
-          </Box>
-          {error && <Alert severity="error">{error}</Alert>}
-          <Typography component="h2" variant="h2">
-            اختر الوردية
+      <Stack
+        component="section"
+        spacing={2}
+        sx={{
+          minHeight: "calc(100vh - 64px)",
+          maxWidth: 560,
+          mx: "auto",
+          justifyContent: "center",
+        }}
+      >
+        <Paper sx={{ p: { xs: 2, sm: 3 } }}>
+          <Typography component="h1" variant="h2" sx={{ textAlign: "center", mb: 2 }}>
+            {formatArabicDate(businessDate)}
           </Typography>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+          {error && <Alert severity="error">{error}</Alert>}
+          <Grid container spacing={1.5}>
             {(Object.keys(shiftLabels) as ShiftType[]).map((type) => (
-              <Button
-                key={type}
-                type="button"
-                variant={selectedShiftType === type ? "contained" : "outlined"}
-                aria-pressed={selectedShiftType === type}
-                onClick={() => setSelectedShiftType(type)}
-                sx={{ minHeight: 64, flex: 1 }}
-              >
-                {shiftLabels[type]}
-              </Button>
+              <Grid key={type} size={{ xs: 6 }}>
+                <Button
+                  type="button"
+                  fullWidth
+                  variant="outlined"
+                  disabled={busy}
+                  onClick={() => openShift(type)}
+                  sx={{
+                    minHeight: { xs: 160, sm: 200 },
+                    fontSize: { xs: "1.25rem", sm: "1.5rem" },
+                  }}
+                >
+                  {type === "MORNING" ? "صباحية" : "مسائية"}
+                </Button>
+              </Grid>
             ))}
-          </Stack>
-          <Button
-            type="button"
-            variant="contained"
-            disabled={busy}
-            onClick={openShift}
-            sx={{ minHeight: 64 }}
-          >
-            {busy ? "جارٍ الفتح…" : "بدء الوردية"}
-          </Button>
-        </Stack>
-      </Paper>
+          </Grid>
+        </Paper>
+      </Stack>
     );
   }
 
   return (
-    <Stack component="main" spacing={1.5}>
-      <Paper component="header" sx={{ p: 1.5 }}>
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          spacing={1}
-          sx={{ alignItems: { sm: "center" } }}
-        >
-          <Box sx={{ flexGrow: 1 }}>
-            <Typography component="h1" variant="h2">
-              {shiftLabels[data.shift.type]} · {formatArabicDate(data.shift.businessDate)}
-            </Typography>
-          </Box>
-          <Chip
-            color={online ? "success" : "warning"}
-            label={online ? "متصل" : "محفوظ على الجهاز"}
-          />
-          {pendingSyncCount > 0 && (
-            <Chip color="info" label={`${pendingSyncCount} بانتظار المزامنة`} />
-          )}
-          {failedSyncCount > 0 && <Chip color="error" label={`${failedSyncCount} تحتاج مراجعة`} />}
-          <Chip
-            variant="outlined"
-            label={data.shift.status === "OPEN" ? "وردية مفتوحة" : "وردية مغلقة"}
-          />
-          {data.shift.status === "OPEN" && (
-            <Button
-              type="button"
-              size="small"
-              color="warning"
-              variant="outlined"
-              disabled={busy}
-              onClick={() => setCloseDialogOpen(true)}
-            >
-              إغلاق الوردية
-            </Button>
-          )}
-          <Button
-            type="button"
-            size="small"
-            variant="outlined"
-            onClick={() => {
-              setData(null);
-              finishSupplier();
+    <Stack component="section" spacing={1.25} sx={{ minHeight: "calc(100vh - 48px)" }}>
+      {error && <Alert severity="error">{error}</Alert>}
+      <Grid container spacing={1.5} sx={{ alignItems: "stretch" }}>
+        <Grid size={{ xs: 12 }}>
+          <Paper
+            component="section"
+            aria-label="اختيار المورد"
+            sx={{
+              p: { xs: 1.5, sm: 2 },
+              minHeight: selectedSupplier ? "auto" : "calc(100vh - 70px)",
             }}
           >
-            تغيير الوردية
-          </Button>
-        </Stack>
-      </Paper>
-      {error && <Alert severity="error">{error}</Alert>}
-      {message && (
-        <Alert severity="success" role="status">
-          {message}
-        </Alert>
-      )}
-      <Grid container spacing={1.5} sx={{ alignItems: "stretch" }}>
-        <Grid size={{ xs: 12, md: 4 }}>
-          <Paper
-            component="aside"
-            aria-label="اختيار المورد"
-            sx={{ p: 1.5, height: { md: "100%" } }}
-          >
             <Stack spacing={1.5}>
-              <Box>
-                <Typography component="h2" variant="h2">
-                  المتوقع الآن
-                </Typography>
-                <Stack direction="row" spacing={0.75} useFlexGap sx={{ mt: 1, flexWrap: "wrap" }}>
-                  {data.suggestions.map((supplier) => (
-                    <Button
-                      key={supplier.id}
-                      type="button"
-                      size="small"
-                      variant="outlined"
-                      onClick={() => selectSupplier(supplier.id)}
-                    >
-                      {supplier.displayName}
-                    </Button>
-                  ))}
-                </Stack>
-              </Box>
-              <Divider />
-              <Box>
-                <Stack
-                  direction="row"
-                  sx={{ justifyContent: "space-between", alignItems: "center" }}
-                >
-                  <Typography component="h2" variant="h2">
-                    اختر المورد بالاسم
+              <Paper aria-label="المورد المختار" variant="outlined" sx={{ p: 1.5, minHeight: 64 }}>
+                <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                  <Typography component="h1" variant="h2" sx={{ flexGrow: 1 }}>
+                    {selectedSupplier?.displayName ?? "\u00a0"}
                   </Typography>
-                  {prefix.length > 0 && (
+                  {selectedSupplier && (
+                    <>
+                      <Button type="button" variant="text" onClick={finishSupplier}>
+                        إنهاء
+                      </Button>
+                      <Button type="button" variant="text" onClick={() => setHistoryOpen(true)}>
+                        آخر الحركات
+                      </Button>
+                      {data.shift.status === "OPEN" && (
+                        <Button
+                          type="button"
+                          color="warning"
+                          variant="text"
+                          disabled={busy}
+                          onClick={() => setCloseDialogOpen(true)}
+                        >
+                          إغلاق
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </Stack>
+              </Paper>
+              <Stack
+                direction="row"
+                spacing={0.75}
+                useFlexGap
+                sx={{ minHeight: 44, flexWrap: "wrap" }}
+              >
+                {data.suggestions.map((supplier) => (
+                  <Button
+                    key={supplier.id}
+                    type="button"
+                    size="small"
+                    variant="outlined"
+                    onClick={() => selectSupplier(supplier.id)}
+                  >
+                    {supplier.displayName}
+                  </Button>
+                ))}
+              </Stack>
+              <Box>
+                {!selectedSupplier && prefix.length > 0 && (
+                  <Stack direction="row" sx={{ justifyContent: "flex-end", mb: 1 }}>
                     <Button
                       type="button"
                       size="small"
@@ -639,255 +543,249 @@ export function PosWorkspace({
                     >
                       من البداية
                     </Button>
-                  )}
-                </Stack>
-                {prefix.length > 0 && (
-                  <Typography color="text.secondary" variant="body2" sx={{ mt: 0.5 }}>
-                    {prefix.join(" ← ")}
-                  </Typography>
-                )}
-                <Grid container spacing={1} sx={{ mt: 0.25 }}>
-                  {nextTokens.map((token) => (
-                    <Grid key={token} size={{ xs: 6 }}>
-                      <Button
-                        type="button"
-                        fullWidth
-                        variant="outlined"
-                        onClick={() => chooseToken(token)}
-                        sx={{ minHeight: 56 }}
-                      >
-                        {token}
-                      </Button>
-                    </Grid>
-                  ))}
-                </Grid>
-                {matchingSuppliers.length > 1 && nextTokens.length === 0 && (
-                  <Stack spacing={0.75} sx={{ mt: 1 }}>
-                    {matchingSuppliers.map((supplier) => (
-                      <Button
-                        key={supplier.id}
-                        type="button"
-                        variant="outlined"
-                        onClick={() => selectSupplier(supplier.id)}
-                      >
-                        {supplier.displayName}
-                      </Button>
-                    ))}
                   </Stack>
+                )}
+                {!selectedSupplier && (
+                  <Grid container spacing={1}>
+                    {nextTokens.map((token) => (
+                      <Grid key={token} size={{ xs: 6, sm: 4, md: 3 }}>
+                        <Button
+                          type="button"
+                          fullWidth
+                          variant="outlined"
+                          onClick={() => chooseToken(token)}
+                          sx={{ minHeight: { xs: 72, sm: 88 }, fontSize: "1.1rem" }}
+                        >
+                          {token}
+                        </Button>
+                      </Grid>
+                    ))}
+                  </Grid>
+                )}
+                {!selectedSupplier && matchingSuppliers.length > 1 && nextTokens.length === 0 && (
+                  <Grid container spacing={1} sx={{ mt: 0.25 }}>
+                    {matchingSuppliers.map((supplier) => (
+                      <Grid key={supplier.id} size={{ xs: 6, sm: 4, md: 3 }}>
+                        <Button
+                          type="button"
+                          fullWidth
+                          variant="outlined"
+                          onClick={() => selectSupplier(supplier.id)}
+                          sx={{ minHeight: { xs: 72, sm: 88 }, fontSize: "1.1rem" }}
+                        >
+                          {supplier.displayName}
+                        </Button>
+                      </Grid>
+                    ))}
+                  </Grid>
                 )}
               </Box>
             </Stack>
           </Paper>
         </Grid>
-        <Grid size={{ xs: 12, md: 8 }}>
-          <Paper
-            component="section"
-            aria-label="تسجيل اللبن"
-            sx={{ p: { xs: 2, sm: 2.5 }, minHeight: { md: 520 } }}
-          >
-            {!selectedSupplier ? (
-              <Stack spacing={1} sx={{ justifyContent: "center", minHeight: { md: 440 } }}>
-                <Typography component="h2" variant="h2">
-                  اختر المورد أولاً
-                </Typography>
-                <Typography color="text.secondary">
-                  استخدم الموردين المتوقعين أو كلمات الاسم الثابتة.
-                </Typography>
-              </Stack>
-            ) : (
-              <Stack spacing={2}>
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={1}
-                  sx={{ justifyContent: "space-between" }}
-                >
-                  <Box>
-                    <Typography component="h2" variant="h1">
-                      {selectedSupplier.displayName}
-                    </Typography>
-                    {selectedSupplier.posInstruction && (
-                      <Alert severity="info" sx={{ mt: 1 }}>
-                        {selectedSupplier.posInstruction}
-                      </Alert>
-                    )}
-                  </Box>
-                  <Button type="button" variant="outlined" onClick={finishSupplier}>
-                    إنهاء المورد
-                  </Button>
-                </Stack>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                  {(Object.keys(milkLabels) as MilkType[]).map((type) => (
-                    <Button
-                      key={type}
-                      type="button"
-                      variant={milkType === type ? "contained" : "outlined"}
-                      aria-pressed={milkType === type}
-                      onClick={() => setMilkType(type)}
-                      sx={{ minHeight: 60, flex: 1 }}
-                    >
-                      {milkLabels[type]}
-                    </Button>
-                  ))}
-                </Stack>
-                <QuantityPad
-                  satls={satls}
-                  cups={cups}
-                  quarters={quarters}
-                  onSatlsChange={setSatls}
-                  onCupsChange={setCups}
-                  onQuartersChange={setQuarters}
-                />
-                <Typography variant="h2">
-                  الكمية:{" "}
-                  {satls || cups || quarters
-                    ? formatQuantityArabic(Math.max(1, satls * 24 + cups * 4 + quarters))
-                    : "اختر الكمية"}
-                </Typography>
-                <Button
-                  type="button"
-                  variant="contained"
-                  disabled={busy || data.shift.status !== "OPEN" || satls + cups + quarters === 0}
-                  onClick={saveMilk}
-                  sx={{ minHeight: 64 }}
-                >
-                  {busy
-                    ? "جارٍ الحفظ…"
-                    : editingEntry
-                      ? "حفظ التعديل"
-                      : `حفظ ${milkLabels[milkType]}`}
-                </Button>
-                {!editingEntry && (
-                  <Button
-                    type="button"
-                    variant="outlined"
-                    onClick={() => setMilkType(milkType === "COW" ? "BUFFALO" : "COW")}
-                  >
-                    إضافة نوع اللبن الآخر لنفس المورد
-                  </Button>
-                )}
-                <Divider />
-                <Stack spacing={1} aria-label="تسجيل نقد للمورد">
-                  <Typography component="h3" variant="h3">
-                    نقد للمورد
+        {selectedSupplier && (
+          <Grid size={{ xs: 12 }}>
+            <Paper
+              component="section"
+              aria-label="تسجيل اللبن"
+              sx={{ p: { xs: 2, sm: 2.5 }, minHeight: { md: 520 } }}
+            >
+              {!selectedSupplier ? (
+                <Stack spacing={1} sx={{ justifyContent: "center", minHeight: { md: 440 } }}>
+                  <Typography component="h2" variant="h2">
+                    اختر المورد أولاً
                   </Typography>
-                  <Typography color="text.secondary" variant="body2">
-                    يسجل المبلغ فقط، ولا تظهر أرصدة أو أسعار على شاشة الاستلام.
+                  <Typography color="text.secondary">
+                    استخدم الموردين المتوقعين أو كلمات الاسم الثابتة.
                   </Typography>
-                  <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap" }}>
-                    {[10, 20, 50, 100].map((amount) => (
+                </Stack>
+              ) : (
+                <Stack spacing={2}>
+                  {selectedSupplier.posInstruction && (
+                    <Alert severity="info">{selectedSupplier.posInstruction}</Alert>
+                  )}
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                    {(Object.keys(milkLabels) as MilkType[]).map((type) => (
                       <Button
-                        key={amount}
+                        key={type}
                         type="button"
-                        variant="outlined"
-                        disabled={busy || data.shift.status !== "OPEN"}
-                        onClick={() => setCashEgp(String(amount))}
-                        sx={{ minHeight: 48 }}
+                        variant={milkType === type ? "contained" : "outlined"}
+                        aria-pressed={milkType === type}
+                        onClick={() => setMilkType(type)}
+                        sx={{ minHeight: 60, flex: 1 }}
                       >
-                        {amount} ج
+                        {milkLabels[type]}
                       </Button>
                     ))}
                   </Stack>
-                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                    <TextField
-                      label="المبلغ بالجنيه"
-                      value={cashEgp}
-                      inputMode="decimal"
-                      onChange={(event) => setCashEgp(event.target.value)}
-                      sx={{ flexGrow: 1 }}
-                    />
+                  <QuantityPad
+                    satls={satls}
+                    cups={cups}
+                    quarters={quarters}
+                    onSatlsChange={setSatls}
+                    onCupsChange={setCups}
+                    onQuartersChange={setQuarters}
+                  />
+                  <Typography variant="h2">
+                    الكمية:{" "}
+                    {satls || cups || quarters
+                      ? formatQuantityArabic(Math.max(1, satls * 24 + cups * 4 + quarters))
+                      : "اختر الكمية"}
+                  </Typography>
+                  <Button
+                    type="button"
+                    variant="contained"
+                    disabled={busy || data.shift.status !== "OPEN" || satls + cups + quarters === 0}
+                    onClick={saveMilk}
+                    sx={{ minHeight: 64 }}
+                  >
+                    {busy
+                      ? "جارٍ الحفظ…"
+                      : editingEntry
+                        ? "حفظ التعديل"
+                        : `حفظ ${milkLabels[milkType]}`}
+                  </Button>
+                  {!editingEntry && (
                     <Button
                       type="button"
                       variant="outlined"
-                      disabled={busy || !cashEgp || data.shift.status !== "OPEN"}
-                      onClick={saveCash}
-                      sx={{ minHeight: 56, minWidth: 132 }}
+                      onClick={() => setMilkType(milkType === "COW" ? "BUFFALO" : "COW")}
                     >
-                      تسجيل النقد
+                      إضافة نوع اللبن الآخر لنفس المورد
+                    </Button>
+                  )}
+                  <Divider />
+                  <Stack spacing={1} aria-label="تسجيل نقد للمورد">
+                    <Typography component="h3" variant="h3">
+                      نقد للمورد
+                    </Typography>
+                    <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap" }}>
+                      {[10, 20, 50, 100].map((amount) => (
+                        <Button
+                          key={amount}
+                          type="button"
+                          variant="outlined"
+                          disabled={busy || data.shift.status !== "OPEN"}
+                          onClick={() => setCashEgp(String(amount))}
+                          sx={{ minHeight: 48 }}
+                        >
+                          {amount} ج
+                        </Button>
+                      ))}
+                    </Stack>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                      <TextField
+                        label="المبلغ بالجنيه"
+                        value={cashEgp}
+                        inputMode="decimal"
+                        onChange={(event) => setCashEgp(event.target.value)}
+                        sx={{ flexGrow: 1 }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outlined"
+                        disabled={busy || !cashEgp || data.shift.status !== "OPEN"}
+                        onClick={saveCash}
+                        sx={{ minHeight: 56, minWidth: 132 }}
+                      >
+                        تسجيل النقد
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </Stack>
+              )}
+            </Paper>
+          </Grid>
+        )}
+      </Grid>
+      <Dialog
+        open={historyOpen}
+        onClose={() => !busy && setHistoryOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>آخر الحركات</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={0.75}>
+            {data.entries
+              .filter((entry) => !entry.deletedAt)
+              .slice()
+              .reverse()
+              .map((entry) => (
+                <Stack
+                  key={entry.id}
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={1}
+                  sx={{
+                    alignItems: { sm: "center" },
+                    p: 1,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 1.5,
+                  }}
+                >
+                  <Typography sx={{ flexGrow: 1 }}>
+                    {entry.supplierName} · {milkLabels[entry.milkType]} ·{" "}
+                    {formatQuantityArabic(entry.quantityQuarterCupUnits)}
+                  </Typography>
+                  <Stack direction="row" spacing={0.75}>
+                    <Button
+                      type="button"
+                      size="small"
+                      startIcon={<EditOutlinedIcon />}
+                      disabled={busy || data.shift.status !== "OPEN"}
+                      onClick={() => {
+                        setHistoryOpen(false);
+                        startEdit(entry);
+                      }}
+                    >
+                      تعديل
+                    </Button>
+                    <Button
+                      type="button"
+                      size="small"
+                      color="error"
+                      startIcon={<DeleteOutlineIcon />}
+                      disabled={busy || data.shift.status !== "OPEN"}
+                      onClick={() => deleteEntry(entry)}
+                    >
+                      حذف
                     </Button>
                   </Stack>
                 </Stack>
-              </Stack>
+              ))}
+            {data.entries.filter((entry) => !entry.deletedAt).length === 0 && (
+              <Typography color="text.secondary">لا توجد حركة في هذه الوردية بعد.</Typography>
             )}
-          </Paper>
-        </Grid>
-      </Grid>
-      <Paper component="section" aria-label="آخر حركات الوردية" sx={{ p: 1.5 }}>
-        <Typography component="h2" variant="h2" sx={{ mb: 1 }}>
-          آخر حركات الوردية
-        </Typography>
-        <Stack spacing={0.75} sx={{ maxHeight: 220, overflowY: "auto" }}>
-          {data.entries
-            .filter((entry) => !entry.deletedAt)
-            .slice()
-            .reverse()
-            .map((entry) => (
-              <Stack
-                key={entry.id}
-                direction={{ xs: "column", sm: "row" }}
-                spacing={1}
-                sx={{
-                  alignItems: { sm: "center" },
-                  p: 1,
-                  border: "1px solid",
-                  borderColor: "divider",
-                  borderRadius: 1.5,
-                }}
-              >
-                <Typography sx={{ minWidth: 64 }}>{cairoTime(entry.createdAt)}</Typography>
-                <Typography sx={{ flexGrow: 1 }}>
-                  {entry.supplierName} · {milkLabels[entry.milkType]} ·{" "}
-                  {formatQuantityArabic(entry.quantityQuarterCupUnits)}
-                </Typography>
-                <Stack direction="row" spacing={0.75}>
-                  <Button
-                    type="button"
-                    size="small"
-                    startIcon={<EditOutlinedIcon />}
-                    disabled={busy || data.shift.status !== "OPEN"}
-                    onClick={() => startEdit(entry)}
-                  >
-                    تعديل
-                  </Button>
-                  <Button
-                    type="button"
-                    size="small"
-                    color="error"
-                    startIcon={<DeleteOutlineIcon />}
-                    disabled={busy || data.shift.status !== "OPEN"}
-                    onClick={() => deleteEntry(entry)}
-                  >
-                    حذف
-                  </Button>
+            {data.cashRecords
+              .slice()
+              .reverse()
+              .map((movement) => (
+                <Stack
+                  key={movement.id}
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={1}
+                  sx={{
+                    alignItems: { sm: "center" },
+                    p: 1,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 1.5,
+                  }}
+                >
+                  <Typography sx={{ flexGrow: 1 }}>
+                    {movement.supplierName} · نقد مسجل للمورد
+                  </Typography>
                 </Stack>
-              </Stack>
-            ))}
-          {data.entries.filter((entry) => !entry.deletedAt).length === 0 && (
-            <Typography color="text.secondary">لا توجد حركة في هذه الوردية بعد.</Typography>
-          )}
-          {data.cashRecords
-            .slice()
-            .reverse()
-            .map((movement) => (
-              <Stack
-                key={movement.id}
-                direction={{ xs: "column", sm: "row" }}
-                spacing={1}
-                sx={{
-                  alignItems: { sm: "center" },
-                  p: 1,
-                  border: "1px solid",
-                  borderColor: "divider",
-                  borderRadius: 1.5,
-                }}
-              >
-                <Typography sx={{ minWidth: 64 }}>{cairoTime(movement.createdAt)}</Typography>
-                <Typography sx={{ flexGrow: 1 }}>
-                  {movement.supplierName} · نقد مسجل للمورد
-                </Typography>
-              </Stack>
-            ))}
-        </Stack>
-      </Paper>
+              ))}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button type="button" onClick={() => setHistoryOpen(false)}>
+            إغلاق
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={closeDialogOpen} onClose={() => !busy && setCloseDialogOpen(false)}>
         <DialogTitle>إغلاق الوردية</DialogTitle>
         <DialogContent>

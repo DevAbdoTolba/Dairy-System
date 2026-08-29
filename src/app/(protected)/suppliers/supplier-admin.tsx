@@ -15,6 +15,17 @@ import type { Supplier } from "@/modules/suppliers";
 
 type SupplierPayload = { supplier?: Supplier; error?: string };
 
+const demoSuppliers = [
+  "أم أحمد",
+  "فاطمة حسن",
+  "زينب علي",
+  "هدى إبراهيم",
+  "سعاد محمود",
+  "نجاة يوسف",
+  "صفية عبد الله",
+  "أمينة محمد",
+];
+
 async function responsePayload(response: Response) {
   return (await response.json()) as SupplierPayload;
 }
@@ -125,6 +136,29 @@ export function SupplierAdmin({ suppliers }: { suppliers: Supplier[] }) {
     router.refresh();
   }
 
+  async function addDemoSuppliers() {
+    setBusy(true);
+    setError(null);
+    try {
+      const existingNames = new Set(suppliers.map((supplier) => supplier.displayName));
+      for (const displayName of demoSuppliers) {
+        if (existingNames.has(displayName)) continue;
+        const response = await fetch("/api/suppliers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ displayName }),
+        });
+        const result = await responsePayload(response);
+        if (!response.ok) throw new Error(result.error ?? "تعذر إضافة الموردين للتجربة.");
+      }
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "تعذر إضافة الموردين للتجربة.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Stack spacing={3}>
       <Box>
@@ -157,6 +191,9 @@ export function SupplierAdmin({ suppliers }: { suppliers: Supplier[] }) {
             />
             <Button type="submit" variant="contained" disabled={busy}>
               إضافة المورد
+            </Button>
+            <Button type="button" variant="outlined" disabled={busy} onClick={addDemoSuppliers}>
+              إضافة موردين للتجربة
             </Button>
           </Stack>
         </CardContent>
