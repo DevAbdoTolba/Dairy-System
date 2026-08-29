@@ -1,10 +1,12 @@
 "use client";
 
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutlined";
+import HistoryOutlinedIcon from "@mui/icons-material/HistoryOutlined";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import KeyboardReturnOutlinedIcon from "@mui/icons-material/KeyboardReturnOutlined";
 import PointOfSaleOutlinedIcon from "@mui/icons-material/PointOfSaleOutlined";
 import SpaceDashboardOutlinedIcon from "@mui/icons-material/SpaceDashboardOutlined";
+import TodayOutlinedIcon from "@mui/icons-material/TodayOutlined";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
@@ -291,10 +293,22 @@ function DashboardOverview({
         {(dashboard.noEntriesToday || dashboard.noEntriesYesterday) && (
           <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap" }}>
             {dashboard.noEntriesToday && (
-              <Chip size="small" color="warning" variant="outlined" label="اليوم: لا حركة" />
+              <Chip
+                icon={<TodayOutlinedIcon />}
+                size="small"
+                color="warning"
+                variant="outlined"
+                label="اليوم: لا حركة"
+              />
             )}
             {dashboard.noEntriesYesterday && (
-              <Chip size="small" color="info" variant="outlined" label="أمس: لا حركة" />
+              <Chip
+                icon={<HistoryOutlinedIcon />}
+                size="small"
+                color="info"
+                variant="outlined"
+                label="أمس: لا حركة"
+              />
             )}
           </Stack>
         )}
