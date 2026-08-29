@@ -81,7 +81,14 @@ async function prepareDatabase() {
       .collection<StoredDocument>("supplierAccountMovements")
       .createIndex({ ownerReviewStatus: 1, createdAt: -1 }),
     db.collection<StoredDocument>("supplierAccountMovements").createIndex({ settlementId: 1 }),
+    db.collection<StoredDocument>("supplierMilkEntries").createIndex({ settlementId: 1 }),
     db.collection<StoredDocument>("supplierRepaymentInstructions").createIndex({ updatedAt: -1 }),
+    db
+      .collection<StoredDocument>("supplierSettlements")
+      .createIndex({ supplierId: 1, createdAt: -1 }),
+    db
+      .collection<StoredDocument>("supplierSettlements")
+      .createIndex({ paymentMovementId: 1 }, { unique: true, sparse: true }),
     db
       .collection<StoredDocument>("supplierEvents")
       .createIndex({ aggregateType: 1, aggregateId: 1, createdAt: 1 }),

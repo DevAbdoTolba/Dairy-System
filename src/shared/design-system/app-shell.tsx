@@ -20,6 +20,7 @@ import { listQueuedTransactions } from "@/shared/offline/offline-store";
 import { OfflineStatus } from "./offline-status";
 
 const links = [
+  ["/supplier-settlements", "تسويات الموردين", AccountBalanceWalletOutlinedIcon],
   ["/supplier-accounts", "حسابات الموردين", AccountBalanceWalletOutlinedIcon],
   ["/supplier-prices", "أسعار اللبن", AccountBalanceWalletOutlinedIcon],
   ["/dashboard", "الرئيسية", SpaceDashboardOutlinedIcon],

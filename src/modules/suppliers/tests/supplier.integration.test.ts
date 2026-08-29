@@ -185,4 +185,63 @@ describeMongo("supplier milk ledger", () => {
     expect(account.balancePiasters).toBe(300);
     expect(account.instruction?.suggestedDeductionPiasters).toBe(500);
   });
+
+  it("freezes a settlement and creates exactly one linked payment movement", async () => {
+    const { createSupplier } = await import("../application/supplier-service");
+    const { addMilkEntry, openSupplierShift } = await import("../application/shift-service");
+    const { setMilkPrice } = await import("../application/account-service");
+    const { confirmSupplierSettlement } = await import("../application/settlement-service");
+    const { getMilkEntry, listAccountMovements } = await import("../infrastructure/repository");
+    const supplier = await createSupplier({ displayName: "حسن سلامة" });
+    const shift = await openSupplierShift(
+      {
+        commandId: crypto.randomUUID(),
+        shiftId: crypto.randomUUID(),
+        businessDate: "2026-08-29",
+        type: "NIGHT",
+      },
+      "OWNER",
+    );
+    await setMilkPrice({
+      commandId: crypto.randomUUID(),
+      milkType: "BUFFALO",
+      effectiveFrom: "2026-08-01",
+      pricePiastersPerSatl: 1_000,
+    });
+    const entry = await addMilkEntry(
+      shift.shift.id,
+      {
+        commandId: crypto.randomUUID(),
+        entryId: crypto.randomUUID(),
+        supplierId: supplier.id,
+        milkType: "BUFFALO",
+        quantityQuarterCupUnits: 24,
+      },
+      "OWNER",
+    );
+    const commandId = crypto.randomUUID();
+    const created = await confirmSupplierSettlement({
+      commandId,
+      settlementId: crypto.randomUUID(),
+      supplierId: supplier.id,
+      cutoffDate: "2026-08-29",
+      paymentPiasters: 400,
+    });
+    const duplicate = await confirmSupplierSettlement({
+      commandId,
+      settlementId: crypto.randomUUID(),
+      supplierId: supplier.id,
+      cutoffDate: "2026-08-29",
+      paymentPiasters: 400,
+    });
+
+    expect(created.settlement.closingCarryPiasters).toBe(600);
+    expect(duplicate).toMatchObject({ duplicate: true, settlement: { id: created.settlement.id } });
+    expect((await getMilkEntry(entry.entry.id))?.settlementId).toBe(created.settlement.id);
+    expect(
+      (await listAccountMovements({ supplierId: supplier.id })).filter(
+        (movement) => movement.settlementId === created.settlement.id,
+      ),
+    ).toHaveLength(1);
+  });
 });

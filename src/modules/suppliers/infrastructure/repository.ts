@@ -9,6 +9,7 @@ import type {
   SupplierRepaymentInstruction,
 } from "../domain/account-ledger";
 import type { MilkPricePeriod } from "../domain/price";
+import type { SupplierSettlement } from "../domain/settlement";
 
 type Options = { session?: ClientSession };
 
@@ -19,6 +20,7 @@ type MilkEntryDocument = Omit<MilkEntry, "id"> & { _id: string };
 type MilkPriceDocument = Omit<MilkPricePeriod, "id"> & { _id: string };
 type AccountMovementDocument = Omit<SupplierAccountMovement, "id"> & { _id: string };
 type RepaymentInstructionDocument = SupplierRepaymentInstruction & { _id: string };
+type SupplierSettlementDocument = Omit<SupplierSettlement, "id"> & { _id: string };
 type SupplierEventDocument = {
   _id: string;
   kind: string;
@@ -52,6 +54,11 @@ function asMilkPrice(document: MilkPriceDocument): MilkPricePeriod {
 function asAccountMovement(document: AccountMovementDocument): SupplierAccountMovement {
   const { _id, ...movement } = document;
   return { id: _id, ...movement };
+}
+
+function asSettlement(document: SupplierSettlementDocument): SupplierSettlement {
+  const { _id, ...settlement } = document;
+  return { id: _id, ...settlement };
 }
 
 export async function listSuppliers(
@@ -189,6 +196,23 @@ export async function listMilkEntriesForSupplier(
   return entries.map(asMilkEntry);
 }
 
+export async function listUnsettledMilkEntries(
+  supplierId: string,
+  cutoffDate: string,
+  options: Options = {},
+): Promise<MilkEntry[]> {
+  const db = await getDb();
+  const entries = await db
+    .collection<MilkEntryDocument>("supplierMilkEntries")
+    .find(
+      { supplierId, businessDate: { $lte: cutoffDate }, deletedAt: null, settlementId: null },
+      options,
+    )
+    .sort({ businessDate: 1, createdAt: 1, _id: 1 })
+    .toArray();
+  return entries.map(asMilkEntry);
+}
+
 export async function getMilkEntry(id: string, options: Options = {}) {
   const db = await getDb();
   const entry = await db
@@ -262,7 +286,7 @@ export async function updateMilkEntryQuantity(
   const db = await getDb();
   const entries = db.collection<MilkEntryDocument>("supplierMilkEntries");
   const result = await entries.updateOne(
-    { _id: id, revision: expectedRevision, deletedAt: null },
+    { _id: id, revision: expectedRevision, deletedAt: null, settlementId: null },
     { $set: { quantityQuarterCupUnits, updatedAt }, $inc: { revision: 1 } },
     options,
   );
@@ -279,7 +303,7 @@ export async function softDeleteMilkEntry(
   const db = await getDb();
   const entries = db.collection<MilkEntryDocument>("supplierMilkEntries");
   const result = await entries.updateOne(
-    { _id: id, revision: expectedRevision, deletedAt: null },
+    { _id: id, revision: expectedRevision, deletedAt: null, settlementId: null },
     { $set: { deletedAt, updatedAt: deletedAt }, $inc: { revision: 1 } },
     options,
   );
@@ -374,6 +398,54 @@ export async function listAccountMovements(
   return movements.map(asAccountMovement);
 }
 
+export async function listUnsettledAccountMovements(
+  supplierId: string,
+  cutoffDate: string,
+  options: Options = {},
+): Promise<SupplierAccountMovement[]> {
+  const db = await getDb();
+  const movements = await db
+    .collection<AccountMovementDocument>("supplierAccountMovements")
+    .find({ supplierId, businessDate: { $lte: cutoffDate }, settlementId: null }, options)
+    .sort({ businessDate: 1, createdAt: 1, _id: 1 })
+    .toArray();
+  return movements.map(asAccountMovement);
+}
+
+export async function linkMilkEntriesToSettlement(
+  entryIds: string[],
+  settlementId: string,
+  options: Options = {},
+) {
+  if (entryIds.length === 0) return 0;
+  const db = await getDb();
+  const result = await db
+    .collection<MilkEntryDocument>("supplierMilkEntries")
+    .updateMany(
+      { _id: { $in: entryIds }, deletedAt: null, settlementId: null },
+      { $set: { settlementId } },
+      options,
+    );
+  return result.modifiedCount;
+}
+
+export async function linkAccountMovementsToSettlement(
+  movementIds: string[],
+  settlementId: string,
+  options: Options = {},
+) {
+  if (movementIds.length === 0) return 0;
+  const db = await getDb();
+  const result = await db
+    .collection<AccountMovementDocument>("supplierAccountMovements")
+    .updateMany(
+      { _id: { $in: movementIds }, settlementId: null },
+      { $set: { settlementId } },
+      options,
+    );
+  return result.modifiedCount;
+}
+
 export async function markAccountMovementReviewed(id: string, options: Options = {}) {
   const db = await getDb();
   const result = await db
@@ -415,4 +487,44 @@ export async function upsertRepaymentInstruction(
       { upsert: true, ...options },
     );
   return instruction;
+}
+
+export async function insertSettlement(settlement: SupplierSettlement, options: Options = {}) {
+  const db = await getDb();
+  await db
+    .collection<SupplierSettlementDocument>("supplierSettlements")
+    .insertOne({ _id: settlement.id, ...settlement }, options);
+  return settlement;
+}
+
+export async function getSettlement(id: string, options: Options = {}) {
+  const db = await getDb();
+  const settlement = await db
+    .collection<SupplierSettlementDocument>("supplierSettlements")
+    .findOne({ _id: id }, options);
+  return settlement ? asSettlement(settlement) : undefined;
+}
+
+export async function listSupplierSettlements(
+  supplierId?: string,
+  options: Options = {},
+): Promise<SupplierSettlement[]> {
+  const db = await getDb();
+  const settlements = await db
+    .collection<SupplierSettlementDocument>("supplierSettlements")
+    .find(supplierId ? { supplierId } : {}, options)
+    .sort({ createdAt: -1, _id: -1 })
+    .toArray();
+  return settlements.map(asSettlement);
+}
+
+export async function getLatestSupplierSettlement(supplierId: string, options: Options = {}) {
+  const db = await getDb();
+  const settlement = await db
+    .collection<SupplierSettlementDocument>("supplierSettlements")
+    .find({ supplierId }, options)
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(1)
+    .next();
+  return settlement ? asSettlement(settlement) : undefined;
 }

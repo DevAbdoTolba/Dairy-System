@@ -28,6 +28,7 @@ export type MilkEntry = {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  settlementId: string | null;
 };
 
 export class SupplierBusinessRuleError extends Error {}

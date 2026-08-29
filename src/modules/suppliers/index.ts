@@ -10,6 +10,12 @@ export {
   setMilkPrice,
   setRepaymentInstruction,
 } from "./application/account-service";
+export {
+  confirmSupplierSettlement,
+  getSupplierSettlement,
+  listSettlements,
+  previewSupplierSettlement,
+} from "./application/settlement-service";
 export { getShift, listMilkEntries, listSupplierVisits } from "./infrastructure/repository";
 export type {
   AccountMovementType,
@@ -17,5 +23,6 @@ export type {
   SupplierRepaymentInstruction,
 } from "./domain/account-ledger";
 export type { MilkPricePeriod } from "./domain/price";
+export type { SupplierSettlement } from "./domain/settlement";
 export type { MilkEntry, MilkType, ShiftType, SupplierShift } from "./domain/shift";
 export type { Supplier } from "./domain/supplier";

@@ -107,6 +107,7 @@ export async function addMilkEntry(shiftId: string, rawInput: CreateMilkInput, a
         createdAt: timestamp,
         updatedAt: timestamp,
         deletedAt: null,
+        settlementId: null,
       };
       await insertMilkEntry(entry, { session });
       return { entry };
