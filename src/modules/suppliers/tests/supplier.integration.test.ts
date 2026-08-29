@@ -24,24 +24,42 @@ describeMongo("supplier milk ledger", () => {
     const { listMilkEntries } = await import("../infrastructure/repository");
     const supplier = await createSupplier({ displayName: "عبدو أحمد" });
     const shift = await openSupplierShift(
-      { commandId: crypto.randomUUID(), businessDate: "2026-08-29", type: "MORNING" },
+      {
+        commandId: crypto.randomUUID(),
+        shiftId: crypto.randomUUID(),
+        businessDate: "2026-08-29",
+        type: "MORNING",
+      },
       "POS",
     );
     const commandId = crypto.randomUUID();
     const cow = await addMilkEntry(
       shift.shift.id,
-      { commandId, supplierId: supplier.id, milkType: "COW", quantityQuarterCupUnits: 24 },
+      {
+        commandId,
+        entryId: crypto.randomUUID(),
+        supplierId: supplier.id,
+        milkType: "COW",
+        quantityQuarterCupUnits: 24,
+      },
       "POS",
     );
     const duplicate = await addMilkEntry(
       shift.shift.id,
-      { commandId, supplierId: supplier.id, milkType: "COW", quantityQuarterCupUnits: 24 },
+      {
+        commandId,
+        entryId: crypto.randomUUID(),
+        supplierId: supplier.id,
+        milkType: "COW",
+        quantityQuarterCupUnits: 24,
+      },
       "POS",
     );
     await addMilkEntry(
       shift.shift.id,
       {
         commandId: crypto.randomUUID(),
+        entryId: crypto.randomUUID(),
         supplierId: supplier.id,
         milkType: "BUFFALO",
         quantityQuarterCupUnits: 12,
@@ -64,13 +82,19 @@ describeMongo("supplier milk ledger", () => {
     const { getMilkEntry } = await import("../infrastructure/repository");
     const supplier = await createSupplier({ displayName: "محمد حسن" });
     const shift = await openSupplierShift(
-      { commandId: crypto.randomUUID(), businessDate: "2026-08-29", type: "NIGHT" },
+      {
+        commandId: crypto.randomUUID(),
+        shiftId: crypto.randomUUID(),
+        businessDate: "2026-08-29",
+        type: "NIGHT",
+      },
       "POS",
     );
     const created = await addMilkEntry(
       shift.shift.id,
       {
         commandId: crypto.randomUUID(),
+        entryId: crypto.randomUUID(),
         supplierId: supplier.id,
         milkType: "COW",
         quantityQuarterCupUnits: 4,

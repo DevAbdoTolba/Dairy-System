@@ -12,7 +12,7 @@ import Grid from "@mui/material/Grid";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { PosBootstrap } from "../application/pos-service";
 import {
   quantityFromParts,
@@ -22,6 +22,16 @@ import {
 import { nextSupplierTokens, suppliersMatchingTokens } from "../domain/trie";
 import type { MilkType, ShiftType } from "../domain/shift";
 import { formatArabicDate } from "@/shared/dates/business-date";
+import {
+  cachePosWorkspace,
+  persistSupplierWorkspaceCommand,
+  readCachedPosWorkspace,
+  syncPersistedSupplierCommand,
+  flushSupplierOutbox,
+  listSupplierOutbox,
+  type SupplierEndpoint,
+} from "@/shared/offline/supplier-offline";
+import { listenForQueueChanges } from "@/shared/offline/offline-store";
 
 type TimelineEntry = PosBootstrap["entries"][number];
 
@@ -44,6 +54,19 @@ function cairoTime(value: string) {
   }).format(new Date(value));
 }
 
+function subscribeToConnection(callback: () => void) {
+  window.addEventListener("online", callback);
+  window.addEventListener("offline", callback);
+  return () => {
+    window.removeEventListener("online", callback);
+    window.removeEventListener("offline", callback);
+  };
+}
+
+function currentConnection() {
+  return navigator.onLine;
+}
+
 export function PosWorkspace({ businessDate }: { businessDate: string }) {
   const [data, setData] = useState<PosBootstrap | null>(null);
   const [selectedShiftType, setSelectedShiftType] = useState<ShiftType>("MORNING");
@@ -57,6 +80,9 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [failedSyncCount, setFailedSyncCount] = useState(0);
+  const online = useSyncExternalStore(subscribeToConnection, currentConnection, () => true);
 
   const selectedSupplier =
     data?.suppliers.find((supplier) => supplier.id === selectedSupplierId) ?? null;
@@ -69,29 +95,89 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
     [data, prefix],
   );
 
-  async function loadBootstrap(shiftId: string) {
+  const loadBootstrap = useCallback(async (shiftId: string) => {
     const response = await fetch(`/api/pos/bootstrap?shiftId=${encodeURIComponent(shiftId)}`, {
       cache: "no-store",
     });
     const result = await json<PosBootstrap>(response);
     if (!response.ok) throw new Error(result.error ?? "تعذر تحميل بيانات الوردية.");
     setData(result);
-  }
+    await cachePosWorkspace(result);
+  }, []);
+
+  const refreshOutbox = useCallback(() => {
+    void listSupplierOutbox()
+      .then((entries) => {
+        setPendingSyncCount(entries.filter((entry) => entry.state === "pending").length);
+        setFailedSyncCount(entries.filter((entry) => entry.state === "failed").length);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    void readCachedPosWorkspace<PosBootstrap>().then((cached) => {
+      if (cached?.shift.businessDate !== businessDate) return;
+      setData(cached);
+      if (navigator.onLine) void loadBootstrap(cached.shift.id).catch(() => undefined);
+    });
+  }, [businessDate, loadBootstrap]);
+
+  useEffect(() => {
+    refreshOutbox();
+    return listenForQueueChanges(refreshOutbox);
+  }, [refreshOutbox]);
+
+  useEffect(() => {
+    const syncWhenOnline = () => {
+      if (!data?.shift.id || !navigator.onLine) return;
+      void flushSupplierOutbox().then((result) => {
+        if (result.synced > 0) void loadBootstrap(data.shift.id).catch(() => undefined);
+      });
+    };
+    window.addEventListener("online", syncWhenOnline);
+    return () => window.removeEventListener("online", syncWhenOnline);
+  }, [data?.shift.id, loadBootstrap]);
 
   async function openShift() {
     setBusy(true);
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch("/api/supplier-shifts", {
+      const cached = await readCachedPosWorkspace<PosBootstrap>();
+      const shiftId = requestId();
+      const localData: PosBootstrap = {
+        shift: {
+          id: shiftId,
+          businessDate,
+          type: selectedShiftType,
+          status: "OPEN",
+          openedAt: new Date().toISOString(),
+          closedAt: null,
+          closedByRole: null,
+          snapshotHash: null,
+        },
+        suppliers: cached?.suppliers ?? [],
+        suggestions: cached?.suggestions ?? [],
+        entries: [],
+      };
+      if (!navigator.onLine && localData.suppliers.length === 0)
+        throw new Error(
+          "يجب فتح شاشة الاستلام مرة واحدة بالإنترنت لحفظ قائمة الموردين على هذا الجهاز.",
+        );
+      const entry = await persistSupplierWorkspaceCommand(localData, {
+        id: requestId(),
+        endpoint: "/api/supplier-shifts",
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ commandId: requestId(), businessDate, type: selectedShiftType }),
+        payload: { commandId: requestId(), shiftId, businessDate, type: selectedShiftType },
       });
-      const result = await json<{ shift: { id: string } }>(response);
-      if (!response.ok) throw new Error(result.error ?? "تعذر فتح الوردية.");
-      await loadBootstrap(result.shift.id);
-      setMessage("تم فتح الوردية.");
+      setData(localData);
+      const result = await syncPersistedSupplierCommand<{ shift: { id: string } }>(entry);
+      if (result.status === "synced" && result.data) await loadBootstrap(result.data.shift.id);
+      setMessage(
+        result.status === "synced"
+          ? "تم فتح الوردية ومزامنتها."
+          : "تم حفظ الوردية على الجهاز بانتظار المزامنة.",
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تعذر فتح الوردية.");
     } finally {
@@ -147,36 +233,68 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
     setError(null);
     try {
       const quantityQuarterCupUnits = quantityFromParts({ satls, cups, quarters });
-      const url = editingEntry
+      const createdAt = new Date().toISOString();
+      const entryId = editingEntry?.id ?? requestId();
+      const localEntry: TimelineEntry = editingEntry
+        ? {
+            ...editingEntry,
+            quantityQuarterCupUnits,
+            revision: editingEntry.revision + 1,
+          }
+        : {
+            id: entryId,
+            supplierId: selectedSupplier.id,
+            supplierName: selectedSupplier.displayName,
+            milkType,
+            quantityQuarterCupUnits,
+            revision: 1,
+            createdAt,
+            deletedAt: null,
+          };
+      const localData: PosBootstrap = {
+        ...data,
+        entries: editingEntry
+          ? data.entries.map((entry) => (entry.id === editingEntry.id ? localEntry : entry))
+          : [...data.entries, localEntry],
+      };
+      const endpoint: SupplierEndpoint = editingEntry
         ? `/api/supplier-shifts/${data.shift.id}/milk/${editingEntry.id}`
         : `/api/supplier-shifts/${data.shift.id}/milk`;
-      const response = await fetch(url, {
+      const outboxEntry = await persistSupplierWorkspaceCommand(localData, {
+        id: requestId(),
+        endpoint,
         method: editingEntry ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          editingEntry
-            ? {
-                commandId: requestId(),
-                expectedRevision: editingEntry.revision,
-                quantityQuarterCupUnits,
-              }
-            : {
-                commandId: requestId(),
-                supplierId: selectedSupplier.id,
-                milkType,
-                quantityQuarterCupUnits,
-              },
-        ),
+        payload: editingEntry
+          ? {
+              commandId: requestId(),
+              expectedRevision: editingEntry.revision,
+              quantityQuarterCupUnits,
+            }
+          : {
+              commandId: requestId(),
+              entryId,
+              supplierId: selectedSupplier.id,
+              milkType,
+              quantityQuarterCupUnits,
+            },
       });
-      const result = await json<{ entry: TimelineEntry }>(response);
-      if (!response.ok) throw new Error(result.error ?? "تعذر حفظ اللبن.");
+      setData(localData);
       setEditingEntry(null);
       setSatls(0);
       setCups(0);
       setQuarters(0);
-      setMessage(editingEntry ? "تم تعديل الحركة." : "تم حفظ اللبن.");
-      await loadBootstrap(data.shift.id);
+      const result = await syncPersistedSupplierCommand<{ entry: TimelineEntry }>(outboxEntry);
+      if (result.status === "synced") await loadBootstrap(data.shift.id);
+      setMessage(
+        result.status === "synced"
+          ? editingEntry
+            ? "تم تعديل الحركة."
+            : "تم حفظ اللبن."
+          : "تم حفظ الحركة على الجهاز بانتظار المزامنة.",
+      );
     } catch (caught) {
+      setData(data);
+      void cachePosWorkspace(data);
       setError(caught instanceof Error ? caught.message : "تعذر حفظ اللبن.");
     } finally {
       setBusy(false);
@@ -188,16 +306,35 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch(`/api/supplier-shifts/${data.shift.id}/milk/${entry.id}`, {
+      const localData: PosBootstrap = {
+        ...data,
+        entries: data.entries.map((candidate) =>
+          candidate.id === entry.id
+            ? {
+                ...candidate,
+                revision: candidate.revision + 1,
+                deletedAt: new Date().toISOString(),
+              }
+            : candidate,
+        ),
+      };
+      const outboxEntry = await persistSupplierWorkspaceCommand(localData, {
+        id: requestId(),
+        endpoint: `/api/supplier-shifts/${data.shift.id}/milk/${entry.id}`,
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ commandId: requestId(), expectedRevision: entry.revision }),
+        payload: { commandId: requestId(), expectedRevision: entry.revision },
       });
-      const result = await json<{ entry: TimelineEntry }>(response);
-      if (!response.ok) throw new Error(result.error ?? "تعذر حذف الحركة.");
-      setMessage("تم حذف الحركة من الوردية المفتوحة.");
-      await loadBootstrap(data.shift.id);
+      setData(localData);
+      const result = await syncPersistedSupplierCommand<{ entry: TimelineEntry }>(outboxEntry);
+      if (result.status === "synced") await loadBootstrap(data.shift.id);
+      setMessage(
+        result.status === "synced"
+          ? "تم حذف الحركة من الوردية المفتوحة."
+          : "تم حفظ الحذف على الجهاز بانتظار المزامنة.",
+      );
     } catch (caught) {
+      setData(data);
+      void cachePosWorkspace(data);
       setError(caught instanceof Error ? caught.message : "تعذر حذف الحركة.");
     } finally {
       setBusy(false);
@@ -259,11 +396,29 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
               {shiftLabels[data.shift.type]} · {formatArabicDate(data.shift.businessDate)}
             </Typography>
           </Box>
-          <Chip color="success" label="متصل" />
+          <Chip
+            color={online ? "success" : "warning"}
+            label={online ? "متصل" : "محفوظ على الجهاز"}
+          />
+          {pendingSyncCount > 0 && (
+            <Chip color="info" label={`${pendingSyncCount} بانتظار المزامنة`} />
+          )}
+          {failedSyncCount > 0 && <Chip color="error" label={`${failedSyncCount} تحتاج مراجعة`} />}
           <Chip
             variant="outlined"
             label={data.shift.status === "OPEN" ? "وردية مفتوحة" : "وردية مغلقة"}
           />
+          <Button
+            type="button"
+            size="small"
+            variant="outlined"
+            onClick={() => {
+              setData(null);
+              finishSupplier();
+            }}
+          >
+            تغيير الوردية
+          </Button>
         </Stack>
       </Paper>
       {error && <Alert severity="error">{error}</Alert>}

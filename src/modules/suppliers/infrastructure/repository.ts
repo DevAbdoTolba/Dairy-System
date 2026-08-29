@@ -9,6 +9,7 @@ type Options = { session?: ClientSession };
 
 type SupplierDocument = Omit<Supplier, "id"> & { _id: string };
 type SupplierShiftDocument = Omit<SupplierShift, "id"> & { _id: string };
+type SupplierShiftAliasDocument = { _id: string; shiftId: string; createdAt: string };
 type MilkEntryDocument = Omit<MilkEntry, "id"> & { _id: string };
 type SupplierEventDocument = {
   _id: string;
@@ -117,6 +118,31 @@ export async function insertShift(shift: SupplierShift, options: Options = {}) {
     .collection<SupplierShiftDocument>("supplierShifts")
     .insertOne({ _id: shift.id, ...shift }, options);
   return shift;
+}
+
+export async function upsertShiftAlias(
+  clientShiftId: string,
+  shiftId: string,
+  options: Options = {},
+) {
+  const db = await getDb();
+  await db
+    .collection<SupplierShiftAliasDocument>("supplierShiftAliases")
+    .updateOne(
+      { _id: clientShiftId },
+      { $setOnInsert: { shiftId, createdAt: new Date().toISOString() } },
+      { upsert: true, ...options },
+    );
+}
+
+export async function getResolvedShift(id: string, options: Options = {}) {
+  const direct = await getShift(id, options);
+  if (direct) return direct;
+  const db = await getDb();
+  const alias = await db
+    .collection<SupplierShiftAliasDocument>("supplierShiftAliases")
+    .findOne({ _id: id }, options);
+  return alias ? getShift(alias.shiftId, options) : undefined;
 }
 
 export async function listMilkEntries(

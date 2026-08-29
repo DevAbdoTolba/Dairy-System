@@ -1,8 +1,11 @@
 import { stockDelta, type TransactionType } from "@/modules/transactions/domain/transaction";
 
 export const OFFLINE_DATABASE_NAME = "dairy-offline";
-export const OFFLINE_DATABASE_VERSION = 1;
+export const OFFLINE_DATABASE_VERSION = 2;
 export const OFFLINE_TRANSACTION_STORE = "transactions";
+export const OFFLINE_SUPPLIER_OUTBOX_STORE = "supplier-outbox";
+export const OFFLINE_SUPPLIER_CACHE_STORE = "supplier-cache";
+export const OFFLINE_SUPPLIER_SNAPSHOT_STORE = "supplier-snapshots";
 export const OFFLINE_QUEUE_EVENT = "dairy-outbox-change";
 
 export type OfflineTransactionInput = {

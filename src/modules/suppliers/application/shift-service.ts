@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { MongoServerError } from "mongodb";
 import { z } from "zod";
 import type { Role } from "@/modules/auth/domain/role";
@@ -15,22 +14,25 @@ import {
 import {
   findShiftByBusinessDate,
   getMilkEntry,
-  getShift,
+  getResolvedShift,
   getSupplier,
   getSupplierEvent,
   insertMilkEntry,
   insertShift,
   insertSupplierEvent,
   softDeleteMilkEntry,
+  upsertShiftAlias,
   updateMilkEntryQuantity,
 } from "../infrastructure/repository";
 
 const commandSchema = z.object({ commandId: z.string().uuid() });
 const shiftInputSchema = commandSchema.extend({
+  shiftId: z.string().uuid(),
   businessDate: z.string().refine(isIsoDate, "التاريخ غير صحيح."),
   type: z.enum(shiftTypes),
 });
 const createMilkSchema = commandSchema.extend({
+  entryId: z.string().uuid(),
   supplierId: z.string().uuid(),
   milkType: z.enum(milkTypes),
   quantityQuarterCupUnits: z.number().int().positive().max(1_000_000),
@@ -86,8 +88,6 @@ async function withCommand<T>(
 
 export async function openSupplierShift(rawInput: OpenShiftInput, actorRole: Role) {
   const input = shiftInputSchema.parse(rawInput);
-  const known = await findShiftByBusinessDate(input.businessDate, input.type);
-  if (known) return { shift: known, duplicate: true };
   const result = await withCommand(
     input.commandId,
     "SHIFT_OPENED",
@@ -96,10 +96,14 @@ export async function openSupplierShift(rawInput: OpenShiftInput, actorRole: Rol
     actorRole,
     async (session) => {
       const existing = await findShiftByBusinessDate(input.businessDate, input.type, { session });
-      if (existing) return { shift: existing };
+      if (existing) {
+        if (existing.id !== input.shiftId)
+          await upsertShiftAlias(input.shiftId, existing.id, { session });
+        return { shift: existing };
+      }
       const timestamp = new Date().toISOString();
       const shift: SupplierShift = {
-        id: crypto.randomUUID(),
+        id: input.shiftId,
         businessDate: input.businessDate,
         type: input.type,
         status: "OPEN",
@@ -125,7 +129,7 @@ export async function addMilkEntry(shiftId: string, rawInput: CreateMilkInput, a
     actorRole,
     async (session) => {
       const [shift, supplier] = await Promise.all([
-        getShift(shiftId, { session }),
+        getResolvedShift(shiftId, { session }),
         getSupplier(input.supplierId, { session }),
       ]);
       if (!shift) throw new SupplierBusinessRuleError("الوردية غير موجودة.");
@@ -133,7 +137,7 @@ export async function addMilkEntry(shiftId: string, rawInput: CreateMilkInput, a
       if (!supplier?.active) throw new SupplierBusinessRuleError("المورد غير متاح للتسجيل.");
       const timestamp = new Date().toISOString();
       const entry: MilkEntry = {
-        id: crypto.randomUUID(),
+        id: input.entryId,
         shiftId,
         supplierId: input.supplierId,
         milkType: input.milkType,
@@ -167,7 +171,7 @@ export async function reviseMilkEntry(
     actorRole,
     async (session) => {
       const [shift, entry] = await Promise.all([
-        getShift(shiftId, { session }),
+        getResolvedShift(shiftId, { session }),
         getMilkEntry(entryId, { session }),
       ]);
       if (!shift || !entry || entry.shiftId !== shiftId)
@@ -205,7 +209,7 @@ export async function deleteMilkEntry(
     actorRole,
     async (session) => {
       const [shift, entry] = await Promise.all([
-        getShift(shiftId, { session }),
+        getResolvedShift(shiftId, { session }),
         getMilkEntry(entryId, { session }),
       ]);
       if (!shift || !entry || entry.shiftId !== shiftId)
