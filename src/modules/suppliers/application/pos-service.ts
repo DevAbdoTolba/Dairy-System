@@ -1,5 +1,10 @@
 import { predictSuppliers } from "../domain/prediction";
-import { getShift, listMilkEntries, listSupplierVisits } from "../infrastructure/repository";
+import {
+  getShift,
+  listAccountMovements,
+  listMilkEntries,
+  listSupplierVisits,
+} from "../infrastructure/repository";
 import { listActiveSuppliers } from "./supplier-service";
 
 export type PosBootstrap = {
@@ -24,14 +29,21 @@ export type PosBootstrap = {
     createdAt: string;
     deletedAt: string | null;
   }>;
+  cashRecords: Array<{
+    id: string;
+    supplierId: string;
+    supplierName: string;
+    createdAt: string;
+  }>;
 };
 
 export async function getPosBootstrap(shiftId: string): Promise<PosBootstrap> {
-  const [shift, suppliers, entries, visits] = await Promise.all([
+  const [shift, suppliers, entries, visits, cashMovements] = await Promise.all([
     getShift(shiftId),
     listActiveSuppliers(),
     listMilkEntries(shiftId),
     listSupplierVisits(),
+    listAccountMovements({ shiftId }),
   ]);
   if (!shift) throw new Error("الوردية غير موجودة.");
   const supplierById = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
@@ -71,5 +83,13 @@ export async function getPosBootstrap(shiftId: string): Promise<PosBootstrap> {
       createdAt: entry.createdAt,
       deletedAt: entry.deletedAt,
     })),
+    cashRecords: cashMovements
+      .filter((movement) => movement.type === "POS_CASH_OUT")
+      .map((movement) => ({
+        id: movement.id,
+        supplierId: movement.supplierId,
+        supplierName: supplierById.get(movement.supplierId)?.displayName ?? "مورد غير متاح",
+        createdAt: movement.createdAt,
+      })),
   };
 }

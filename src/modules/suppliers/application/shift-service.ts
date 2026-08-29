@@ -1,7 +1,5 @@
-import { MongoServerError } from "mongodb";
 import { z } from "zod";
 import type { Role } from "@/modules/auth/domain/role";
-import { withMongoTransaction } from "@/shared/db";
 import { isIsoDate } from "@/shared/dates/business-date";
 import {
   milkTypes,
@@ -16,14 +14,13 @@ import {
   getMilkEntry,
   getResolvedShift,
   getSupplier,
-  getSupplierEvent,
   insertMilkEntry,
   insertShift,
-  insertSupplierEvent,
   softDeleteMilkEntry,
   upsertShiftAlias,
   updateMilkEntryQuantity,
 } from "../infrastructure/repository";
+import { withSupplierCommand } from "./command-service";
 
 const commandSchema = z.object({ commandId: z.string().uuid() });
 const shiftInputSchema = commandSchema.extend({
@@ -48,47 +45,9 @@ export type CreateMilkInput = z.input<typeof createMilkSchema>;
 export type ReviseMilkInput = z.input<typeof reviseMilkSchema>;
 export type DeleteMilkInput = z.input<typeof deleteMilkSchema>;
 
-async function withCommand<T>(
-  commandId: string,
-  kind: string,
-  aggregateType: "SUPPLIER" | "SHIFT" | "MILK_ENTRY",
-  aggregateId: string,
-  actorRole: Role,
-  operation: (session: Parameters<Parameters<typeof withMongoTransaction>[0]>[0]) => Promise<T>,
-) {
-  const existing = await getSupplierEvent(commandId);
-  if (existing) return { value: existing.result as T, duplicate: true };
-  try {
-    return await withMongoTransaction(async (session) => {
-      const repeated = await getSupplierEvent(commandId, { session });
-      if (repeated) return { value: repeated.result as T, duplicate: true };
-      const value = await operation(session);
-      await insertSupplierEvent(
-        {
-          _id: commandId,
-          kind,
-          aggregateType,
-          aggregateId,
-          actorRole,
-          result: value,
-          createdAt: new Date().toISOString(),
-        },
-        { session },
-      );
-      return { value, duplicate: false };
-    });
-  } catch (error) {
-    if (error instanceof MongoServerError && error.code === 11000) {
-      const repeated = await getSupplierEvent(commandId);
-      if (repeated) return { value: repeated.result as T, duplicate: true };
-    }
-    throw error;
-  }
-}
-
 export async function openSupplierShift(rawInput: OpenShiftInput, actorRole: Role) {
   const input = shiftInputSchema.parse(rawInput);
-  const result = await withCommand(
+  const result = await withSupplierCommand(
     input.commandId,
     "SHIFT_OPENED",
     "SHIFT",
@@ -121,7 +80,7 @@ export async function openSupplierShift(rawInput: OpenShiftInput, actorRole: Rol
 
 export async function addMilkEntry(shiftId: string, rawInput: CreateMilkInput, actorRole: Role) {
   const input = createMilkSchema.parse(rawInput);
-  const result = await withCommand(
+  const result = await withSupplierCommand(
     input.commandId,
     "MILK_ADDED",
     "MILK_ENTRY",
@@ -163,7 +122,7 @@ export async function reviseMilkEntry(
   actorRole: Role,
 ) {
   const input = reviseMilkSchema.parse(rawInput);
-  const result = await withCommand(
+  const result = await withSupplierCommand(
     input.commandId,
     "MILK_REVISED",
     "MILK_ENTRY",
@@ -201,7 +160,7 @@ export async function deleteMilkEntry(
   actorRole: Role,
 ) {
   const input = deleteMilkSchema.parse(rawInput);
-  const result = await withCommand(
+  const result = await withSupplierCommand(
     input.commandId,
     "MILK_DELETED",
     "MILK_ENTRY",

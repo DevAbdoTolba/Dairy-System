@@ -1,6 +1,7 @@
 "use client";
 
 import AssessmentOutlinedIcon from "@mui/icons-material/AssessmentOutlined";
+import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
 import HistoryOutlinedIcon from "@mui/icons-material/HistoryOutlined";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
@@ -19,6 +20,8 @@ import { listQueuedTransactions } from "@/shared/offline/offline-store";
 import { OfflineStatus } from "./offline-status";
 
 const links = [
+  ["/supplier-accounts", "حسابات الموردين", AccountBalanceWalletOutlinedIcon],
+  ["/supplier-prices", "أسعار اللبن", AccountBalanceWalletOutlinedIcon],
   ["/dashboard", "الرئيسية", SpaceDashboardOutlinedIcon],
   ["/inventory", "المخزون", Inventory2OutlinedIcon],
   ["/history", "السجل", HistoryOutlinedIcon],

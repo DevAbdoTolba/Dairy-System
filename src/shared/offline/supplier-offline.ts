@@ -11,7 +11,8 @@ import { requestBackgroundSync } from "./offline-sync";
 export type SupplierEndpoint =
   | "/api/supplier-shifts"
   | `/api/supplier-shifts/${string}/milk`
-  | `/api/supplier-shifts/${string}/milk/${string}`;
+  | `/api/supplier-shifts/${string}/milk/${string}`
+  | `/api/supplier-shifts/${string}/cash`;
 
 export type SupplierMethod = "POST" | "PUT" | "DELETE";
 

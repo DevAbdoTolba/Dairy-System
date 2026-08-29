@@ -4,6 +4,11 @@ import type { Role } from "@/modules/auth/domain/role";
 import type { MilkEntry, SupplierShift } from "../domain/shift";
 import type { Supplier } from "../domain/supplier";
 import type { SupplierVisit } from "../domain/prediction";
+import type {
+  SupplierAccountMovement,
+  SupplierRepaymentInstruction,
+} from "../domain/account-ledger";
+import type { MilkPricePeriod } from "../domain/price";
 
 type Options = { session?: ClientSession };
 
@@ -11,10 +16,13 @@ type SupplierDocument = Omit<Supplier, "id"> & { _id: string };
 type SupplierShiftDocument = Omit<SupplierShift, "id"> & { _id: string };
 type SupplierShiftAliasDocument = { _id: string; shiftId: string; createdAt: string };
 type MilkEntryDocument = Omit<MilkEntry, "id"> & { _id: string };
+type MilkPriceDocument = Omit<MilkPricePeriod, "id"> & { _id: string };
+type AccountMovementDocument = Omit<SupplierAccountMovement, "id"> & { _id: string };
+type RepaymentInstructionDocument = SupplierRepaymentInstruction & { _id: string };
 type SupplierEventDocument = {
   _id: string;
   kind: string;
-  aggregateType: "SUPPLIER" | "SHIFT" | "MILK_ENTRY";
+  aggregateType: "SUPPLIER" | "SHIFT" | "MILK_ENTRY" | "PRICE" | "ACCOUNT_MOVEMENT" | "SETTLEMENT";
   aggregateId: string;
   actorRole: Role;
   result: unknown;
@@ -34,6 +42,16 @@ function asShift(document: SupplierShiftDocument): SupplierShift {
 function asMilkEntry(document: MilkEntryDocument): MilkEntry {
   const { _id, ...entry } = document;
   return { id: _id, ...entry };
+}
+
+function asMilkPrice(document: MilkPriceDocument): MilkPricePeriod {
+  const { _id, ...price } = document;
+  return { id: _id, ...price };
+}
+
+function asAccountMovement(document: AccountMovementDocument): SupplierAccountMovement {
+  const { _id, ...movement } = document;
+  return { id: _id, ...movement };
 }
 
 export async function listSuppliers(
@@ -158,6 +176,19 @@ export async function listMilkEntries(
   return entries.map(asMilkEntry);
 }
 
+export async function listMilkEntriesForSupplier(
+  supplierId: string,
+  options: Options = {},
+): Promise<MilkEntry[]> {
+  const db = await getDb();
+  const entries = await db
+    .collection<MilkEntryDocument>("supplierMilkEntries")
+    .find({ supplierId }, options)
+    .sort({ businessDate: 1, createdAt: 1, _id: 1 })
+    .toArray();
+  return entries.map(asMilkEntry);
+}
+
 export async function getMilkEntry(id: string, options: Options = {}) {
   const db = await getDb();
   const entry = await db
@@ -266,4 +297,122 @@ export async function getSupplierEvent(commandId: string, options: Options = {})
 export async function insertSupplierEvent(event: SupplierEventDocument, options: Options = {}) {
   const db = await getDb();
   await db.collection<SupplierEventDocument>("supplierEvents").insertOne(event, options);
+}
+
+export async function listMilkPrices(options: Options = {}): Promise<MilkPricePeriod[]> {
+  const db = await getDb();
+  const prices = await db
+    .collection<MilkPriceDocument>("supplierMilkPrices")
+    .find({}, options)
+    .sort({ milkType: 1, effectiveFrom: -1, _id: 1 })
+    .toArray();
+  return prices.map(asMilkPrice);
+}
+
+export async function upsertMilkPrice(price: MilkPricePeriod, options: Options = {}) {
+  const db = await getDb();
+  await db.collection<MilkPriceDocument>("supplierMilkPrices").updateOne(
+    { milkType: price.milkType, effectiveFrom: price.effectiveFrom },
+    {
+      $set: {
+        pricePiastersPerSatl: price.pricePiastersPerSatl,
+        updatedAt: price.updatedAt,
+      },
+      $setOnInsert: {
+        _id: price.id,
+        milkType: price.milkType,
+        effectiveFrom: price.effectiveFrom,
+        createdAt: price.createdAt,
+      },
+    },
+    { upsert: true, ...options },
+  );
+  const stored = await db
+    .collection<MilkPriceDocument>("supplierMilkPrices")
+    .findOne({ milkType: price.milkType, effectiveFrom: price.effectiveFrom }, options);
+  if (!stored) throw new Error("Could not store the milk price.");
+  return asMilkPrice(stored);
+}
+
+export async function getAccountMovement(id: string, options: Options = {}) {
+  const db = await getDb();
+  const movement = await db
+    .collection<AccountMovementDocument>("supplierAccountMovements")
+    .findOne({ _id: id }, options);
+  return movement ? asAccountMovement(movement) : undefined;
+}
+
+export async function insertAccountMovement(
+  movement: SupplierAccountMovement,
+  options: Options = {},
+) {
+  const db = await getDb();
+  await db
+    .collection<AccountMovementDocument>("supplierAccountMovements")
+    .insertOne({ _id: movement.id, ...movement }, options);
+  return movement;
+}
+
+export async function listAccountMovements(
+  filters: {
+    supplierId?: string;
+    shiftId?: string;
+    ownerReviewStatus?: SupplierAccountMovement["ownerReviewStatus"];
+  } = {},
+  options: Options = {},
+): Promise<SupplierAccountMovement[]> {
+  const db = await getDb();
+  const filter: Filter<AccountMovementDocument> = {};
+  if (filters.supplierId) filter.supplierId = filters.supplierId;
+  if (filters.shiftId) filter.shiftId = filters.shiftId;
+  if (filters.ownerReviewStatus) filter.ownerReviewStatus = filters.ownerReviewStatus;
+  const movements = await db
+    .collection<AccountMovementDocument>("supplierAccountMovements")
+    .find(filter, options)
+    .sort({ businessDate: -1, createdAt: -1, _id: -1 })
+    .toArray();
+  return movements.map(asAccountMovement);
+}
+
+export async function markAccountMovementReviewed(id: string, options: Options = {}) {
+  const db = await getDb();
+  const result = await db
+    .collection<AccountMovementDocument>("supplierAccountMovements")
+    .updateOne(
+      { _id: id, ownerReviewStatus: "PENDING" },
+      { $set: { ownerReviewStatus: "REVIEWED" } },
+      options,
+    );
+  if (result.matchedCount === 0) return undefined;
+  return getAccountMovement(id, options);
+}
+
+export async function getRepaymentInstruction(supplierId: string, options: Options = {}) {
+  const db = await getDb();
+  const instruction = await db
+    .collection<RepaymentInstructionDocument>("supplierRepaymentInstructions")
+    .findOne({ _id: supplierId }, options);
+  if (!instruction) return undefined;
+  return {
+    supplierId: instruction.supplierId,
+    suggestedDeductionPiasters: instruction.suggestedDeductionPiasters,
+    holdPaymentUntil: instruction.holdPaymentUntil,
+    note: instruction.note,
+    updatedAt: instruction.updatedAt,
+  };
+}
+
+export async function upsertRepaymentInstruction(
+  instruction: SupplierRepaymentInstruction,
+  options: Options = {},
+) {
+  const db = await getDb();
+  await db
+    .collection<RepaymentInstructionDocument>("supplierRepaymentInstructions")
+    .updateOne(
+      { _id: instruction.supplierId },
+      { $set: instruction, $setOnInsert: { _id: instruction.supplierId } },
+      { upsert: true, ...options },
+    );
+  return instruction;
 }

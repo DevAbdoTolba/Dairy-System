@@ -11,6 +11,7 @@ import Divider from "@mui/material/Divider";
 import Grid from "@mui/material/Grid";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { PosBootstrap } from "../application/pos-service";
@@ -34,6 +35,7 @@ import {
 import { listenForQueueChanges } from "@/shared/offline/offline-store";
 
 type TimelineEntry = PosBootstrap["entries"][number];
+type CashRecord = PosBootstrap["cashRecords"][number];
 
 const shiftLabels: Record<ShiftType, string> = { MORNING: "وردية صباحية", NIGHT: "وردية مسائية" };
 const milkLabels: Record<MilkType, string> = { COW: "لبن بقري", BUFFALO: "لبن جاموسي" };
@@ -67,6 +69,16 @@ function currentConnection() {
   return navigator.onLine;
 }
 
+function piastersFromEgp(value: string) {
+  const normalized = value.trim().replace("٫", ".");
+  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(normalized);
+  if (!match) return null;
+  const whole = Number(match[1]);
+  const fraction = Number((match[2] ?? "").padEnd(2, "0"));
+  const result = whole * 100 + fraction;
+  return Number.isSafeInteger(result) && result > 0 ? result : null;
+}
+
 export function PosWorkspace({ businessDate }: { businessDate: string }) {
   const [data, setData] = useState<PosBootstrap | null>(null);
   const [selectedShiftType, setSelectedShiftType] = useState<ShiftType>("MORNING");
@@ -76,6 +88,7 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
   const [satls, setSatls] = useState(0);
   const [cups, setCups] = useState(0);
   const [quarters, setQuarters] = useState(0);
+  const [cashEgp, setCashEgp] = useState("");
   const [editingEntry, setEditingEntry] = useState<TimelineEntry | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -159,6 +172,7 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
         suppliers: cached?.suppliers ?? [],
         suggestions: cached?.suggestions ?? [],
         entries: [],
+        cashRecords: [],
       };
       if (!navigator.onLine && localData.suppliers.length === 0)
         throw new Error(
@@ -336,6 +350,56 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
       setData(data);
       void cachePosWorkspace(data);
       setError(caught instanceof Error ? caught.message : "تعذر حذف الحركة.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveCash() {
+    if (!data || !selectedSupplier) return;
+    const amountPiasters = piastersFromEgp(cashEgp);
+    if (!amountPiasters) {
+      setError("أدخل مبلغًا صحيحًا بالجنيه.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const movementId = requestId();
+      const localRecord: CashRecord = {
+        id: movementId,
+        supplierId: selectedSupplier.id,
+        supplierName: selectedSupplier.displayName,
+        createdAt: new Date().toISOString(),
+      };
+      const localData: PosBootstrap = {
+        ...data,
+        cashRecords: [...data.cashRecords, localRecord],
+      };
+      const outboxEntry = await persistSupplierWorkspaceCommand(localData, {
+        id: requestId(),
+        endpoint: `/api/supplier-shifts/${data.shift.id}/cash`,
+        method: "POST",
+        payload: {
+          commandId: requestId(),
+          movementId,
+          supplierId: selectedSupplier.id,
+          amountPiasters,
+        },
+      });
+      setData(localData);
+      setCashEgp("");
+      const result = await syncPersistedSupplierCommand<{ movement: { id: string } }>(outboxEntry);
+      if (result.status === "synced") await loadBootstrap(data.shift.id);
+      setMessage(
+        result.status === "synced"
+          ? "تم تسجيل النقد للمورد؛ سيظهر لصاحب المعمل للمراجعة."
+          : "تم حفظ النقد على الجهاز بانتظار المزامنة.",
+      );
+    } catch (caught) {
+      setData(data);
+      void cachePosWorkspace(data);
+      setError(caught instanceof Error ? caught.message : "تعذر تسجيل النقد.");
     } finally {
       setBusy(false);
     }
@@ -597,6 +661,47 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
                     إضافة نوع اللبن الآخر لنفس المورد
                   </Button>
                 )}
+                <Divider />
+                <Stack spacing={1} aria-label="تسجيل نقد للمورد">
+                  <Typography component="h3" variant="h3">
+                    نقد للمورد
+                  </Typography>
+                  <Typography color="text.secondary" variant="body2">
+                    يسجل المبلغ فقط، ولا تظهر أرصدة أو أسعار على شاشة الاستلام.
+                  </Typography>
+                  <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap" }}>
+                    {[10, 20, 50, 100].map((amount) => (
+                      <Button
+                        key={amount}
+                        type="button"
+                        variant="outlined"
+                        disabled={busy || data.shift.status !== "OPEN"}
+                        onClick={() => setCashEgp(String(amount))}
+                        sx={{ minHeight: 48 }}
+                      >
+                        {amount} ج
+                      </Button>
+                    ))}
+                  </Stack>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                    <TextField
+                      label="المبلغ بالجنيه"
+                      value={cashEgp}
+                      inputMode="decimal"
+                      onChange={(event) => setCashEgp(event.target.value)}
+                      sx={{ flexGrow: 1 }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outlined"
+                      disabled={busy || !cashEgp || data.shift.status !== "OPEN"}
+                      onClick={saveCash}
+                      sx={{ minHeight: 56, minWidth: 132 }}
+                    >
+                      تسجيل النقد
+                    </Button>
+                  </Stack>
+                </Stack>
               </Stack>
             )}
           </Paper>
@@ -655,6 +760,28 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
           {data.entries.filter((entry) => !entry.deletedAt).length === 0 && (
             <Typography color="text.secondary">لا توجد حركة في هذه الوردية بعد.</Typography>
           )}
+          {data.cashRecords
+            .slice()
+            .reverse()
+            .map((movement) => (
+              <Stack
+                key={movement.id}
+                direction={{ xs: "column", sm: "row" }}
+                spacing={1}
+                sx={{
+                  alignItems: { sm: "center" },
+                  p: 1,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 1.5,
+                }}
+              >
+                <Typography sx={{ minWidth: 64 }}>{cairoTime(movement.createdAt)}</Typography>
+                <Typography sx={{ flexGrow: 1 }}>
+                  {movement.supplierName} · نقد مسجل للمورد
+                </Typography>
+              </Stack>
+            ))}
         </Stack>
       </Paper>
     </Stack>
