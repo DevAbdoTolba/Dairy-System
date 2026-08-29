@@ -103,7 +103,9 @@ export async function requireOwner() {
 }
 
 export async function requirePosOrOwner() {
-  if (!(await hasPosOrOwnerSession())) redirect("/login");
+  const session = await getSession();
+  if (!session || !canAccessPosArea(session.role)) redirect("/login");
+  return session;
 }
 
 export async function startSession(input: { role: Role; credentialVersion: number }) {

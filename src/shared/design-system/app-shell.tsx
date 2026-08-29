@@ -1,12 +1,11 @@
 "use client";
 
 import AssessmentOutlinedIcon from "@mui/icons-material/AssessmentOutlined";
-import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
 import HistoryOutlinedIcon from "@mui/icons-material/HistoryOutlined";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import SpaceDashboardOutlinedIcon from "@mui/icons-material/SpaceDashboardOutlined";
-import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
+import SwapHorizOutlinedIcon from "@mui/icons-material/SwapHorizOutlined";
 import AppBar from "@mui/material/AppBar";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -20,14 +19,10 @@ import { listQueuedTransactions } from "@/shared/offline/offline-store";
 import { OfflineStatus } from "./offline-status";
 
 const links = [
-  ["/supplier-settlements", "تسويات الموردين", AccountBalanceWalletOutlinedIcon],
-  ["/supplier-accounts", "حسابات الموردين", AccountBalanceWalletOutlinedIcon],
-  ["/supplier-prices", "أسعار اللبن", AccountBalanceWalletOutlinedIcon],
   ["/dashboard", "الرئيسية", SpaceDashboardOutlinedIcon],
   ["/inventory", "المخزون", Inventory2OutlinedIcon],
   ["/history", "السجل", HistoryOutlinedIcon],
   ["/reports", "التقارير", AssessmentOutlinedIcon],
-  ["/suppliers", "الموردون", PeopleAltOutlinedIcon],
   ["/settings", "الإعدادات", SettingsOutlinedIcon],
 ] as const;
 
@@ -62,10 +57,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             نظام معمل الجبنة
           </Typography>
           <Button
+            component={Link}
+            href="/pos"
+            color="inherit"
+            variant="outlined"
+            startIcon={<SwapHorizOutlinedIcon />}
+            sx={{ borderColor: "rgba(255,255,255,.7)", minHeight: 44 }}
+          >
+            التبديل إلى وضع اللبن
+          </Button>
+          <Button
             onClick={logout}
             color="inherit"
             variant="outlined"
-            sx={{ borderColor: "rgba(255,255,255,.7)" }}
+            sx={{ borderColor: "rgba(255,255,255,.7)", minHeight: 44 }}
           >
             خروج
           </Button>

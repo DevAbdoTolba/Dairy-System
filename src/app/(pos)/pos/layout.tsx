@@ -4,6 +4,6 @@ import { PosShell } from "@/shared/design-system/pos-shell";
 export const dynamic = "force-dynamic";
 
 export default async function PosLayout({ children }: { children: React.ReactNode }) {
-  await requirePosOrOwner();
-  return <PosShell>{children}</PosShell>;
+  const session = await requirePosOrOwner();
+  return <PosShell isOwner={session.role === "OWNER"}>{children}</PosShell>;
 }

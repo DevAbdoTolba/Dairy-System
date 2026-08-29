@@ -72,7 +72,7 @@ requirePosOrOwner();
 validateMutation(request, allowedRoles);
 ```
 
-The login screen asks whether the user is entering as owner or milk-collection POS, then validates the corresponding PIN. Owner goes to `/dashboard`; POS goes to `/pos`. The current owner hashing/rate-limit style is retained. The owner can rotate the POS PIN; rotation increments `credentialVersion` and invalidates server-side POS sessions on their next online request.
+The login screen asks whether the user is entering as owner or milk-collection POS, then validates the corresponding PIN. Owner starts at the unchanged cheese dashboard and can explicitly switch into the labelled admin milk-collection mode at `/pos`; POS goes directly to the minimal `/pos` workspace. The current owner hashing/rate-limit style is retained. The owner can rotate the POS PIN; rotation increments `credentialVersion` and invalidates server-side POS sessions on their next online request.
 
 POS pages use a dedicated minimal `PosShell`. Owner-only navigation, reports, settings, balances, price screens, and settlement screens are never rendered or fetched for a POS session.
 
@@ -132,7 +132,7 @@ The POS bootstrap contract contains names, normalized tokens, stable order, owne
 
 ### 4.7 Offline shift close
 
-After a successful online POS login, derive a device-local verifier with versioned PBKDF2-SHA-256 parameters and a random salt using Web Crypto; never store the PIN. Closing requires the PIN again and applies a local attempt limit.
+After a successful online POS or owner login, derive a role-specific device-local verifier with versioned PBKDF2-SHA-256 parameters and a random salt using Web Crypto; never store the PIN. Closing requires the matching PIN again and applies a local attempt limit.
 
 On close, in one local transaction:
 

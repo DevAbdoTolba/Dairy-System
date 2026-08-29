@@ -7,6 +7,19 @@ async function login(page: import("@playwright/test").Page) {
   await page.getByRole("button", { name: "دخول" }).click();
   await expect(page).toHaveURL(/dashboard/);
 }
+
+test("owner switches between cheese administration and milk collection mode", async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole("link", { name: "الموردون" })).toHaveCount(0);
+
+  await page.getByRole("link", { name: "التبديل إلى وضع اللبن" }).click();
+  await expect(page).toHaveURL(/\/pos/);
+  await expect(page.getByText("استلام اللبن — وضع المدير")).toBeVisible();
+
+  await page.getByRole("link", { name: "العودة إلى نظام الجبنة" }).click();
+  await expect(page).toHaveURL(/dashboard/);
+});
+
 test("owner can record production, sale and return while protecting stock", async ({
   page,
 }, testInfo) => {
@@ -70,5 +83,6 @@ test("POS enters its dedicated workspace without owner navigation", async ({ pag
   await page.getByRole("button", { name: "دخول" }).click();
   await expect(page).toHaveURL(/\/pos/);
   await expect(page.getByRole("heading", { name: "استلام اللبن" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "العودة إلى نظام الجبنة" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "الإعدادات" })).toHaveCount(0);
 });

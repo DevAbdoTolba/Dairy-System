@@ -26,6 +26,7 @@ import {
 } from "../domain/quantity";
 import { nextSupplierTokens, suppliersMatchingTokens } from "../domain/trie";
 import type { MilkType, ShiftType } from "../domain/shift";
+import type { Role } from "@/modules/auth/domain/role";
 import { formatArabicDate } from "@/shared/dates/business-date";
 import {
   cachePosWorkspace,
@@ -90,7 +91,13 @@ function piastersFromEgp(value: string) {
   return Number.isSafeInteger(result) && result > 0 ? result : null;
 }
 
-export function PosWorkspace({ businessDate }: { businessDate: string }) {
+export function PosWorkspace({
+  businessDate,
+  credentialRole,
+}: {
+  businessDate: string;
+  credentialRole: Role;
+}) {
   const [data, setData] = useState<PosBootstrap | null>(null);
   const [selectedShiftType, setSelectedShiftType] = useState<ShiftType>("MORNING");
   const [prefix, setPrefix] = useState<string[]>([]);
@@ -121,17 +128,20 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
     [data, prefix],
   );
 
-  const loadBootstrap = useCallback(async (shiftId: string) => {
-    const response = await fetch(`/api/pos/bootstrap?shiftId=${encodeURIComponent(shiftId)}`, {
-      cache: "no-store",
-    });
-    const result = await json<PosBootstrap>(response);
-    if (!response.ok) throw new Error(result.error ?? "تعذر تحميل بيانات الوردية.");
-    if (result.posCredentialVersion)
-      await invalidatePosVerifierIfVersionChanged(result.posCredentialVersion);
-    setData(result);
-    await cachePosWorkspace(result);
-  }, []);
+  const loadBootstrap = useCallback(
+    async (shiftId: string) => {
+      const response = await fetch(`/api/pos/bootstrap?shiftId=${encodeURIComponent(shiftId)}`, {
+        cache: "no-store",
+      });
+      const result = await json<PosBootstrap>(response);
+      if (!response.ok) throw new Error(result.error ?? "تعذر تحميل بيانات الوردية.");
+      if (result.posCredentialVersion)
+        await invalidatePosVerifierIfVersionChanged(result.posCredentialVersion, credentialRole);
+      setData(result);
+      await cachePosWorkspace(result);
+    },
+    [credentialRole],
+  );
 
   const refreshOutbox = useCallback(() => {
     void listSupplierOutbox()
@@ -433,8 +443,8 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
     setBusy(true);
     setError(null);
     try {
-      if (!(await verifyLocalPosPin(closePin))) {
-        setError("رمز الاستلام غير صحيح.");
+      if (!(await verifyLocalPosPin(closePin, credentialRole))) {
+        setError(credentialRole === "OWNER" ? "رمز المالك غير صحيح." : "رمز الاستلام غير صحيح.");
         return;
       }
       const snapshot = await createLocalShiftSnapshot(data);
@@ -444,7 +454,7 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
           ...data.shift,
           status: "CLOSED",
           closedAt: snapshot.payload.closedAt,
-          closedByRole: "POS",
+          closedByRole: credentialRole,
           snapshotHash: snapshot.checksum,
         },
       };
@@ -883,11 +893,13 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
         <DialogContent>
           <Stack spacing={1.5} sx={{ pt: 1 }}>
             <Typography color="text.secondary">
-              أدخل رمز الاستلام مرة أخرى. سيحفظ الجهاز لقطة إغلاق موقعة ويجعل الوردية للقراءة فقط.
+              {credentialRole === "OWNER"
+                ? "أدخل رمز المالك مرة أخرى. سيحفظ الجهاز لقطة إغلاق موقعة ويجعل الوردية للقراءة فقط."
+                : "أدخل رمز الاستلام مرة أخرى. سيحفظ الجهاز لقطة إغلاق موقعة ويجعل الوردية للقراءة فقط."}
             </Typography>
             <TextField
               autoFocus
-              label="رمز الاستلام"
+              label={credentialRole === "OWNER" ? "رمز المالك" : "رمز الاستلام"}
               type="password"
               value={closePin}
               onChange={(event) => setClosePin(event.target.value)}

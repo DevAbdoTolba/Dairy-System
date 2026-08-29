@@ -4,13 +4,13 @@ import { canonicalJson, type ShiftCloseSnapshot } from "@/modules/suppliers/doma
 import { OFFLINE_SUPPLIER_CACHE_STORE, OFFLINE_SUPPLIER_SNAPSHOT_STORE } from "./offline-queue";
 import { openOfflineDatabase } from "./offline-store";
 
-const VERIFIER_ID = "pos-verifier";
 const MAX_ATTEMPTS = 5;
 const LOCK_MS = 15 * 60 * 1000;
 const PBKDF2_ITERATIONS = 210_000;
+export type CredentialRole = "OWNER" | "POS";
 
 type PosVerifier = {
-  id: typeof VERIFIER_ID;
+  id: string;
   credentialVersion: number;
   saltHex: string;
   digestHex: string;
@@ -18,6 +18,10 @@ type PosVerifier = {
   lockedUntil: string | null;
   updatedAt: string;
 };
+
+function verifierId(role: CredentialRole) {
+  return `pos-verifier-${role.toLowerCase()}`;
+}
 
 export type LocalShiftSnapshot = {
   id: string;
@@ -86,11 +90,11 @@ async function derivePinDigest(pin: string, saltHex: string) {
   );
 }
 
-async function readVerifier() {
+async function readVerifier(role: CredentialRole) {
   const database = await openOfflineDatabase();
   const transaction = database.transaction(OFFLINE_SUPPLIER_CACHE_STORE, "readonly");
   const verifier = await requestResult(
-    transaction.objectStore(OFFLINE_SUPPLIER_CACHE_STORE).get(VERIFIER_ID) as IDBRequest<
+    transaction.objectStore(OFFLINE_SUPPLIER_CACHE_STORE).get(verifierId(role)) as IDBRequest<
       PosVerifier | undefined
     >,
   );
@@ -98,20 +102,24 @@ async function readVerifier() {
   return verifier;
 }
 
-async function writeVerifier(verifier: PosVerifier | null) {
+async function writeVerifier(role: CredentialRole, verifier: PosVerifier | null) {
   const database = await openOfflineDatabase();
   const transaction = database.transaction(OFFLINE_SUPPLIER_CACHE_STORE, "readwrite");
   const store = transaction.objectStore(OFFLINE_SUPPLIER_CACHE_STORE);
   if (verifier) store.put(verifier);
-  else store.delete(VERIFIER_ID);
+  else store.delete(verifierId(role));
   await transactionFinished(transaction);
 }
 
-export async function savePosCredentialVerifier(pin: string, credentialVersion: number) {
+export async function savePosCredentialVerifier(
+  pin: string,
+  credentialVersion: number,
+  role: CredentialRole,
+) {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const saltHex = Array.from(salt, (byte) => byte.toString(16).padStart(2, "0")).join("");
-  await writeVerifier({
-    id: VERIFIER_ID,
+  await writeVerifier(role, {
+    id: verifierId(role),
     credentialVersion,
     saltHex,
     digestHex: await derivePinDigest(pin, saltHex),
@@ -121,19 +129,26 @@ export async function savePosCredentialVerifier(pin: string, credentialVersion: 
   });
 }
 
-export async function invalidatePosVerifierIfVersionChanged(credentialVersion: number) {
-  const verifier = await readVerifier();
-  if (verifier && verifier.credentialVersion !== credentialVersion) await writeVerifier(null);
+export async function invalidatePosVerifierIfVersionChanged(
+  credentialVersion: number,
+  role: CredentialRole,
+) {
+  const verifier = await readVerifier(role);
+  if (verifier && verifier.credentialVersion !== credentialVersion) await writeVerifier(role, null);
 }
 
-export async function verifyLocalPosPin(pin: string) {
-  const verifier = await readVerifier();
+export async function verifyLocalPosPin(pin: string, role: CredentialRole) {
+  const verifier = await readVerifier(role);
   if (!verifier)
-    throw new Error("أدخل عبر حساب الاستلام مرة واحدة على الإنترنت قبل الإغلاق دون إنترنت.");
+    throw new Error(
+      role === "OWNER"
+        ? "سجّل الدخول كمالك مرة واحدة على الإنترنت قبل الإغلاق دون إنترنت."
+        : "أدخل عبر حساب الاستلام مرة واحدة على الإنترنت قبل الإغلاق دون إنترنت.",
+    );
   if (verifier.lockedUntil && new Date(verifier.lockedUntil).valueOf() > Date.now())
     throw new Error("تم إيقاف محاولات رمز الاستلام مؤقتًا. أعد المحاولة لاحقًا.");
   const valid = (await derivePinDigest(pin, verifier.saltHex)) === verifier.digestHex;
-  await writeVerifier({
+  await writeVerifier(role, {
     ...verifier,
     failedAttempts: valid ? 0 : verifier.failedAttempts + 1,
     lockedUntil:
