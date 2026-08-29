@@ -3,6 +3,7 @@ import { getDb } from "@/shared/db";
 import type { Role } from "@/modules/auth/domain/role";
 import type { MilkEntry, SupplierShift } from "../domain/shift";
 import type { Supplier } from "../domain/supplier";
+import type { SupplierVisit } from "../domain/prediction";
 
 type Options = { session?: ClientSession };
 
@@ -145,6 +146,53 @@ export async function insertMilkEntry(entry: MilkEntry, options: Options = {}) {
     .collection<MilkEntryDocument>("supplierMilkEntries")
     .insertOne({ _id: entry.id, ...entry }, options);
   return entry;
+}
+
+export async function listSupplierVisits(options: Options = {}): Promise<SupplierVisit[]> {
+  const db = await getDb();
+  const visits = await db
+    .collection<MilkEntryDocument>("supplierMilkEntries")
+    .aggregate<{
+      supplierId: string;
+      shiftId: string;
+      shiftType: SupplierShift["type"];
+      businessDate: string;
+      createdAt: string;
+    }>(
+      [
+        { $match: { deletedAt: null } },
+        {
+          $lookup: {
+            from: "supplierShifts",
+            localField: "shiftId",
+            foreignField: "_id",
+            as: "shift",
+          },
+        },
+        { $unwind: "$shift" },
+        {
+          $group: {
+            _id: { supplierId: "$supplierId", shiftId: "$shiftId" },
+            shiftType: { $first: "$shift.type" },
+            businessDate: { $first: "$businessDate" },
+            createdAt: { $min: "$createdAt" },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            supplierId: "$_id.supplierId",
+            shiftId: "$_id.shiftId",
+            shiftType: 1,
+            businessDate: 1,
+            createdAt: 1,
+          },
+        },
+      ],
+      options,
+    )
+    .toArray();
+  return visits;
 }
 
 export async function updateMilkEntryQuantity(
