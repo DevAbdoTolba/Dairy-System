@@ -8,6 +8,7 @@ import {
 import { listActiveSuppliers } from "./supplier-service";
 
 export type PosBootstrap = {
+  posCredentialVersion?: number;
   shift: NonNullable<Awaited<ReturnType<typeof getShift>>>;
   suppliers: Array<{
     id: string;
@@ -34,6 +35,9 @@ export type PosBootstrap = {
     supplierId: string;
     supplierName: string;
     createdAt: string;
+    /** Present only in local durable state; never serialized by the POS API. */
+    amountPiasters?: number;
+    note?: string;
   }>;
 };
 

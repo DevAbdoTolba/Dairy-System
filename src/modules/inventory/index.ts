@@ -11,6 +11,7 @@ export {
   listActiveVariants,
   listTransactions,
   reserveStockChange,
+  replaceInventoryDatabase,
   replaceDatabase,
   setVariantActive,
   updateSettings,

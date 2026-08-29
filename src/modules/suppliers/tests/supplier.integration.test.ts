@@ -244,4 +244,63 @@ describeMongo("supplier milk ledger", () => {
       ),
     ).toHaveLength(1);
   });
+
+  it("closes a shift exactly once after verifying the canonical local snapshot", async () => {
+    const { openSupplierShift, closeSupplierShiftWithSnapshot, addMilkEntry } =
+      await import("../application/shift-service");
+    const { canonicalJson } = await import("../domain/snapshot");
+    const { createSupplier } = await import("../application/supplier-service");
+    const supplier = await createSupplier({ displayName: "فتحية علي" });
+    const opened = await openSupplierShift(
+      {
+        commandId: crypto.randomUUID(),
+        shiftId: crypto.randomUUID(),
+        businessDate: "2026-08-29",
+        type: "MORNING",
+      },
+      "POS",
+    );
+    const payload = {
+      version: 1 as const,
+      shift: {
+        id: opened.shift.id,
+        businessDate: opened.shift.businessDate,
+        type: opened.shift.type,
+      },
+      entries: [],
+      cashRecordIds: [],
+      closedAt: "2026-08-29T12:00:00.000Z",
+    };
+    const snapshot = {
+      payload,
+      checksum: crypto.createHash("sha256").update(canonicalJson(payload)).digest("hex"),
+    };
+    const commandId = crypto.randomUUID();
+    const closed = await closeSupplierShiftWithSnapshot(
+      opened.shift.id,
+      { commandId, snapshot },
+      "POS",
+    );
+    const duplicate = await closeSupplierShiftWithSnapshot(
+      opened.shift.id,
+      { commandId, snapshot },
+      "POS",
+    );
+
+    expect(closed.shift.status).toBe("CLOSED");
+    expect(duplicate).toMatchObject({ duplicate: true, shift: { id: opened.shift.id } });
+    await expect(
+      addMilkEntry(
+        opened.shift.id,
+        {
+          commandId: crypto.randomUUID(),
+          entryId: crypto.randomUUID(),
+          supplierId: supplier.id,
+          milkType: "COW",
+          quantityQuarterCupUnits: 24,
+        },
+        "POS",
+      ),
+    ).rejects.toThrow(/مغلقة/);
+  });
 });

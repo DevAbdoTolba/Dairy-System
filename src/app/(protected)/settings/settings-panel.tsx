@@ -12,6 +12,7 @@ import Typography from "@mui/material/Typography";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { ProductVariant } from "@/modules/inventory";
+import { DriveBackupControls } from "./drive-backup-controls";
 
 export function SettingsPanel({
   settings,
@@ -223,6 +224,7 @@ export function SettingsPanel({
             <Typography color="text.secondary">
               ينشئ النظام نسخة متسقة من قاعدة البيانات ويجري فحص سلامتها قبل تنزيلها.
             </Typography>
+            <DriveBackupControls />
             <Button type="button" variant="contained" onClick={backup}>
               إنشاء نسخة احتياطية
             </Button>

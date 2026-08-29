@@ -13,6 +13,7 @@ import Typography from "@mui/material/Typography";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Role } from "@/modules/auth/domain/role";
+import { savePosCredentialVerifier } from "@/shared/offline/pos-close";
 
 export function LoginForm() {
   const router = useRouter();
@@ -30,8 +31,14 @@ export function LoginForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role, pin }),
       });
-      const result = (await response.json()) as { error?: string; redirectTo?: string };
+      const result = (await response.json()) as {
+        error?: string;
+        redirectTo?: string;
+        credentialVersion?: number;
+      };
       if (!response.ok) throw new Error(result.error ?? "تعذر تسجيل الدخول.");
+      if (role === "POS" && result.credentialVersion)
+        await savePosCredentialVerifier(pin, result.credentialVersion).catch(() => undefined);
       router.push(result.redirectTo ?? (role === "OWNER" ? "/dashboard" : "/pos"));
       router.refresh();
     } catch (caught) {

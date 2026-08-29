@@ -89,6 +89,14 @@ async function prepareDatabase() {
     db
       .collection<StoredDocument>("supplierSettlements")
       .createIndex({ paymentMovementId: 1 }, { unique: true, sparse: true }),
+    db.collection<StoredDocument>("appIntegrations").createIndex({ updatedAt: -1 }),
+    db
+      .collection<StoredDocument>("backupJobs")
+      .createIndex(
+        { kind: 1, artifactId: 1 },
+        { unique: true, name: "backup_kind_artifact_unique" },
+      ),
+    db.collection<StoredDocument>("backupJobs").createIndex({ status: 1, nextAttemptAt: 1 }),
     db
       .collection<StoredDocument>("supplierEvents")
       .createIndex({ aggregateType: 1, aggregateId: 1, createdAt: 1 }),

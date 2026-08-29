@@ -3,16 +3,19 @@
 import {
   OFFLINE_SUPPLIER_CACHE_STORE,
   OFFLINE_SUPPLIER_OUTBOX_STORE,
+  OFFLINE_SUPPLIER_SNAPSHOT_STORE,
   OFFLINE_QUEUE_EVENT,
 } from "./offline-queue";
 import { announceQueueChange, openOfflineDatabase } from "./offline-store";
 import { requestBackgroundSync } from "./offline-sync";
+import type { LocalShiftSnapshot } from "./pos-close";
 
 export type SupplierEndpoint =
   | "/api/supplier-shifts"
   | `/api/supplier-shifts/${string}/milk`
   | `/api/supplier-shifts/${string}/milk/${string}`
-  | `/api/supplier-shifts/${string}/cash`;
+  | `/api/supplier-shifts/${string}/cash`
+  | `/api/supplier-shifts/${string}/close`;
 
 export type SupplierMethod = "POST" | "PUT" | "DELETE";
 
@@ -153,6 +156,42 @@ export async function persistSupplierWorkspaceCommand<T>(
     data: workspace,
     updatedAt: new Date().toISOString(),
   } satisfies PosCache<T>);
+  await transactionFinished(transaction);
+  announceQueueChange();
+  void requestBackgroundSync();
+  return entry;
+}
+
+export async function persistSupplierClose<T>(
+  workspace: T,
+  snapshot: LocalShiftSnapshot,
+  input: Omit<SupplierOutboxEntry, "createdAt" | "attempts" | "state" | "lastError">,
+) {
+  const database = await openOfflineDatabase();
+  const transaction = database.transaction(
+    [OFFLINE_SUPPLIER_OUTBOX_STORE, OFFLINE_SUPPLIER_CACHE_STORE, OFFLINE_SUPPLIER_SNAPSHOT_STORE],
+    "readwrite",
+  );
+  const outbox = transaction.objectStore(OFFLINE_SUPPLIER_OUTBOX_STORE);
+  const existing = await requestResult(
+    outbox.get(input.id) as IDBRequest<SupplierOutboxEntry | undefined>,
+  );
+  const entry =
+    existing ??
+    ({
+      ...input,
+      createdAt: new Date().toISOString(),
+      attempts: 0,
+      state: "pending",
+      lastError: null,
+    } satisfies SupplierOutboxEntry);
+  if (!existing) outbox.put(entry);
+  transaction.objectStore(OFFLINE_SUPPLIER_CACHE_STORE).put({
+    id: "current",
+    data: workspace,
+    updatedAt: new Date().toISOString(),
+  } satisfies PosCache<T>);
+  transaction.objectStore(OFFLINE_SUPPLIER_SNAPSHOT_STORE).put(snapshot);
   await transactionFinished(transaction);
   announceQueueChange();
   void requestBackgroundSync();

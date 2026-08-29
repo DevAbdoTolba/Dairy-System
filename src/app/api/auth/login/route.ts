@@ -18,7 +18,12 @@ export async function POST(request: Request) {
     if (!credential) return NextResponse.json({ error: "رمز الدخول غير صحيح." }, { status: 401 });
     await startSession(credential);
     const redirectTo = redirectForRole(role);
-    return NextResponse.json({ ok: true, role, redirectTo });
+    return NextResponse.json({
+      ok: true,
+      role,
+      redirectTo,
+      credentialVersion: credential.credentialVersion,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "تعذر تسجيل الدخول." },

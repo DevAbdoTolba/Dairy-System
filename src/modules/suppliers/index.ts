@@ -16,7 +16,13 @@ export {
   listSettlements,
   previewSupplierSettlement,
 } from "./application/settlement-service";
-export { getShift, listMilkEntries, listSupplierVisits } from "./infrastructure/repository";
+export {
+  exportSupplierDatabase,
+  getShift,
+  listMilkEntries,
+  listSupplierVisits,
+  replaceSupplierDatabase,
+} from "./infrastructure/repository";
 export type {
   AccountMovementType,
   SupplierAccountMovement,
@@ -26,3 +32,4 @@ export type { MilkPricePeriod } from "./domain/price";
 export type { SupplierSettlement } from "./domain/settlement";
 export type { MilkEntry, MilkType, ShiftType, SupplierShift } from "./domain/shift";
 export type { Supplier } from "./domain/supplier";
+export type { SupplierBackupData } from "./infrastructure/repository";

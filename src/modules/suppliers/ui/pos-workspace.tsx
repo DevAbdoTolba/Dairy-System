@@ -8,6 +8,10 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
 import Grid from "@mui/material/Grid";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -25,6 +29,7 @@ import type { MilkType, ShiftType } from "../domain/shift";
 import { formatArabicDate } from "@/shared/dates/business-date";
 import {
   cachePosWorkspace,
+  persistSupplierClose,
   persistSupplierWorkspaceCommand,
   readCachedPosWorkspace,
   syncPersistedSupplierCommand,
@@ -33,6 +38,12 @@ import {
   type SupplierEndpoint,
 } from "@/shared/offline/supplier-offline";
 import { listenForQueueChanges } from "@/shared/offline/offline-store";
+import {
+  createLocalShiftSnapshot,
+  downloadLocalShiftSnapshot,
+  invalidatePosVerifierIfVersionChanged,
+  verifyLocalPosPin,
+} from "@/shared/offline/pos-close";
 
 type TimelineEntry = PosBootstrap["entries"][number];
 type CashRecord = PosBootstrap["cashRecords"][number];
@@ -89,6 +100,8 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
   const [cups, setCups] = useState(0);
   const [quarters, setQuarters] = useState(0);
   const [cashEgp, setCashEgp] = useState("");
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [closePin, setClosePin] = useState("");
   const [editingEntry, setEditingEntry] = useState<TimelineEntry | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,6 +127,8 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
     });
     const result = await json<PosBootstrap>(response);
     if (!response.ok) throw new Error(result.error ?? "تعذر تحميل بيانات الوردية.");
+    if (result.posCredentialVersion)
+      await invalidatePosVerifierIfVersionChanged(result.posCredentialVersion);
     setData(result);
     await cachePosWorkspace(result);
   }, []);
@@ -242,7 +257,7 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
   }
 
   async function saveMilk() {
-    if (!data || !selectedSupplier) return;
+    if (!data || !selectedSupplier || data.shift.status !== "OPEN") return;
     setBusy(true);
     setError(null);
     try {
@@ -316,7 +331,13 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
   }
 
   async function deleteEntry(entry: TimelineEntry) {
-    if (!data || entry.deletedAt || !window.confirm("حذف هذه الحركة من الوردية المفتوحة؟")) return;
+    if (
+      !data ||
+      data.shift.status !== "OPEN" ||
+      entry.deletedAt ||
+      !window.confirm("حذف هذه الحركة من الوردية المفتوحة؟")
+    )
+      return;
     setBusy(true);
     setError(null);
     try {
@@ -356,7 +377,7 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
   }
 
   async function saveCash() {
-    if (!data || !selectedSupplier) return;
+    if (!data || !selectedSupplier || data.shift.status !== "OPEN") return;
     const amountPiasters = piastersFromEgp(cashEgp);
     if (!amountPiasters) {
       setError("أدخل مبلغًا صحيحًا بالجنيه.");
@@ -370,6 +391,8 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
         id: movementId,
         supplierId: selectedSupplier.id,
         supplierName: selectedSupplier.displayName,
+        amountPiasters,
+        note: "",
         createdAt: new Date().toISOString(),
       };
       const localData: PosBootstrap = {
@@ -400,6 +423,65 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
       setData(data);
       void cachePosWorkspace(data);
       setError(caught instanceof Error ? caught.message : "تعذر تسجيل النقد.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function closeShift() {
+    if (!data || data.shift.status !== "OPEN") return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (!(await verifyLocalPosPin(closePin))) {
+        setError("رمز الاستلام غير صحيح.");
+        return;
+      }
+      const snapshot = await createLocalShiftSnapshot(data);
+      const localData: PosBootstrap = {
+        ...data,
+        shift: {
+          ...data.shift,
+          status: "CLOSED",
+          closedAt: snapshot.payload.closedAt,
+          closedByRole: "POS",
+          snapshotHash: snapshot.checksum,
+        },
+      };
+      const commandId = requestId();
+      await persistSupplierClose(
+        localData,
+        {
+          id: `${data.shift.id}:${snapshot.checksum}`,
+          shiftId: data.shift.id,
+          snapshot,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: requestId(),
+          endpoint: `/api/supplier-shifts/${data.shift.id}/close`,
+          method: "POST",
+          payload: { commandId, snapshot },
+        },
+      );
+      setData(localData);
+      setCloseDialogOpen(false);
+      setClosePin("");
+      downloadLocalShiftSnapshot({
+        id: `${data.shift.id}:${snapshot.checksum}`,
+        shiftId: data.shift.id,
+        snapshot,
+        createdAt: new Date().toISOString(),
+      });
+      const result = await flushSupplierOutbox();
+      if (navigator.onLine && result.synced > 0) await loadBootstrap(data.shift.id);
+      setMessage(
+        navigator.onLine
+          ? "تم حفظ إغلاق الوردية محليًا. ستكتمل المزامنة بالترتيب عند توفر الجلسة والاتصال."
+          : "تم إغلاق الوردية وحفظ لقطة آمنة على الجهاز. ستتم المزامنة عند عودة الإنترنت.",
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "تعذر إغلاق الوردية.");
     } finally {
       setBusy(false);
     }
@@ -472,6 +554,18 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
             variant="outlined"
             label={data.shift.status === "OPEN" ? "وردية مفتوحة" : "وردية مغلقة"}
           />
+          {data.shift.status === "OPEN" && (
+            <Button
+              type="button"
+              size="small"
+              color="warning"
+              variant="outlined"
+              disabled={busy}
+              onClick={() => setCloseDialogOpen(true)}
+            >
+              إغلاق الوردية
+            </Button>
+          )}
           <Button
             type="button"
             size="small"
@@ -642,7 +736,7 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
                 <Button
                   type="button"
                   variant="contained"
-                  disabled={busy || satls + cups + quarters === 0}
+                  disabled={busy || data.shift.status !== "OPEN" || satls + cups + quarters === 0}
                   onClick={saveMilk}
                   sx={{ minHeight: 64 }}
                 >
@@ -739,7 +833,7 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
                     type="button"
                     size="small"
                     startIcon={<EditOutlinedIcon />}
-                    disabled={busy}
+                    disabled={busy || data.shift.status !== "OPEN"}
                     onClick={() => startEdit(entry)}
                   >
                     تعديل
@@ -749,7 +843,7 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
                     size="small"
                     color="error"
                     startIcon={<DeleteOutlineIcon />}
-                    disabled={busy}
+                    disabled={busy || data.shift.status !== "OPEN"}
                     onClick={() => deleteEntry(entry)}
                   >
                     حذف
@@ -784,6 +878,38 @@ export function PosWorkspace({ businessDate }: { businessDate: string }) {
             ))}
         </Stack>
       </Paper>
+      <Dialog open={closeDialogOpen} onClose={() => !busy && setCloseDialogOpen(false)}>
+        <DialogTitle>إغلاق الوردية</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.5} sx={{ pt: 1 }}>
+            <Typography color="text.secondary">
+              أدخل رمز الاستلام مرة أخرى. سيحفظ الجهاز لقطة إغلاق موقعة ويجعل الوردية للقراءة فقط.
+            </Typography>
+            <TextField
+              autoFocus
+              label="رمز الاستلام"
+              type="password"
+              value={closePin}
+              onChange={(event) => setClosePin(event.target.value)}
+              slotProps={{ htmlInput: { inputMode: "numeric" } }}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button type="button" disabled={busy} onClick={() => setCloseDialogOpen(false)}>
+            إلغاء
+          </Button>
+          <Button
+            type="button"
+            variant="contained"
+            color="warning"
+            disabled={busy || !closePin}
+            onClick={closeShift}
+          >
+            تأكيد الإغلاق
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }

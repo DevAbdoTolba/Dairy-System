@@ -1,4 +1,4 @@
-import type { ClientSession, Filter } from "mongodb";
+import type { ClientSession, Document, Filter } from "mongodb";
 import { getDb } from "@/shared/db";
 import type { Role } from "@/modules/auth/domain/role";
 import type { MilkEntry, SupplierShift } from "../domain/shift";
@@ -12,6 +12,23 @@ import type { MilkPricePeriod } from "../domain/price";
 import type { SupplierSettlement } from "../domain/settlement";
 
 type Options = { session?: ClientSession };
+
+const supplierBackupCollections = [
+  "suppliers",
+  "supplierShifts",
+  "supplierShiftAliases",
+  "supplierMilkEntries",
+  "supplierMilkPrices",
+  "supplierAccountMovements",
+  "supplierRepaymentInstructions",
+  "supplierSettlements",
+  "supplierEvents",
+  "posAccounts",
+] as const;
+
+export type SupplierBackupData = {
+  [Name in (typeof supplierBackupCollections)[number]]: Document[];
+};
 
 type SupplierDocument = Omit<Supplier, "id"> & { _id: string };
 type SupplierShiftDocument = Omit<SupplierShift, "id"> & { _id: string };
@@ -170,6 +187,32 @@ export async function getResolvedShift(id: string, options: Options = {}) {
   return alias ? getShift(alias.shiftId, options) : undefined;
 }
 
+export async function closeSupplierShift(
+  id: string,
+  snapshotHash: string,
+  actorRole: Role,
+  options: Options = {},
+) {
+  const resolved = await getResolvedShift(id, options);
+  if (!resolved) return undefined;
+  if (resolved.status === "CLOSED") return resolved;
+  const db = await getDb();
+  const result = await db.collection<SupplierShiftDocument>("supplierShifts").updateOne(
+    { _id: resolved.id, status: "OPEN" },
+    {
+      $set: {
+        status: "CLOSED",
+        closedAt: new Date().toISOString(),
+        closedByRole: actorRole,
+        snapshotHash,
+      },
+    },
+    options,
+  );
+  if (result.modifiedCount !== 1) return getShift(resolved.id, options);
+  return getShift(resolved.id, options);
+}
+
 export async function listMilkEntries(
   shiftId: string,
   options: Options = {},
@@ -227,6 +270,39 @@ export async function insertMilkEntry(entry: MilkEntry, options: Options = {}) {
     .collection<MilkEntryDocument>("supplierMilkEntries")
     .insertOne({ _id: entry.id, ...entry }, options);
   return entry;
+}
+
+/** Replays a verified close snapshot inside the caller's Mongo transaction. */
+export async function reconcileMilkEntryFromCloseSnapshot(entry: MilkEntry, options: Options = {}) {
+  const existing = await getMilkEntry(entry.id, options);
+  if (!existing) return insertMilkEntry(entry, options);
+  const sameImmutableIdentity =
+    existing.shiftId === entry.shiftId &&
+    existing.supplierId === entry.supplierId &&
+    existing.milkType === entry.milkType &&
+    existing.businessDate === entry.businessDate &&
+    existing.settlementId === null;
+  if (!sameImmutableIdentity || existing.revision > entry.revision) return undefined;
+  const alreadyMatches =
+    existing.quantityQuarterCupUnits === entry.quantityQuarterCupUnits &&
+    existing.revision === entry.revision &&
+    existing.deletedAt === entry.deletedAt;
+  if (alreadyMatches) return existing;
+  const db = await getDb();
+  const result = await db.collection<MilkEntryDocument>("supplierMilkEntries").updateOne(
+    { _id: entry.id, revision: { $lte: entry.revision }, settlementId: null },
+    {
+      $set: {
+        quantityQuarterCupUnits: entry.quantityQuarterCupUnits,
+        revision: entry.revision,
+        updatedAt: entry.updatedAt,
+        deletedAt: entry.deletedAt,
+      },
+    },
+    options,
+  );
+  if (result.matchedCount !== 1) return undefined;
+  return getMilkEntry(entry.id, options);
 }
 
 export async function listSupplierVisits(options: Options = {}): Promise<SupplierVisit[]> {
@@ -527,4 +603,22 @@ export async function getLatestSupplierSettlement(supplierId: string, options: O
     .limit(1)
     .next();
   return settlement ? asSettlement(settlement) : undefined;
+}
+
+export async function exportSupplierDatabase(): Promise<SupplierBackupData> {
+  const db = await getDb();
+  const values = await Promise.all(
+    supplierBackupCollections.map((name) => db.collection<Document>(name).find({}).toArray()),
+  );
+  return Object.fromEntries(
+    supplierBackupCollections.map((name, index) => [name, values[index]]),
+  ) as unknown as SupplierBackupData;
+}
+
+export async function replaceSupplierDatabase(data: SupplierBackupData, session: ClientSession) {
+  const db = await getDb();
+  for (const name of supplierBackupCollections) {
+    await db.collection<Document>(name).deleteMany({}, { session });
+    if (data[name].length) await db.collection<Document>(name).insertMany(data[name], { session });
+  }
 }

@@ -14,8 +14,10 @@ export async function POST(request: Request) {
       throw new Error("اختر ملف نسخة احتياطية صالحاً.");
     if (file.size > 10 * 1024 * 1024) throw new Error("حجم النسخة الاحتياطية يتجاوز 10 ميجابايت.");
     const backup = JSON.parse(await file.text()) as unknown;
-    await restoreBackup(backup);
-    return NextResponse.redirect(new URL("/settings?restored=1", request.url));
+    const restored = await restoreBackup(backup);
+    const redirect = new URL("/settings?restored=1", request.url);
+    if (restored.legacy) redirect.searchParams.set("legacy", "1");
+    return NextResponse.redirect(redirect);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "فشلت الاستعادة." },
