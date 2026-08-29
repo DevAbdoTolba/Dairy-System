@@ -62,3 +62,13 @@ test("core login page is RTL and has no serious accessibility violations", async
     ),
   ).toEqual([]);
 });
+
+test("POS enters its dedicated workspace without owner navigation", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByRole("radio", { name: "استلام اللبن" }).check();
+  await page.getByLabel("رمز استلام اللبن").fill("123456");
+  await page.getByRole("button", { name: "دخول" }).click();
+  await expect(page).toHaveURL(/\/pos/);
+  await expect(page.getByRole("heading", { name: "استلام اللبن" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "الإعدادات" })).toHaveCount(0);
+});
