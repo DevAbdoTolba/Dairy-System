@@ -24,6 +24,7 @@ export default defineConfig({
     env: {
       ...process.env,
       DAIRY_NEXT_DIST_DIR: ".next-e2e",
+      NEXT_PUBLIC_DAIRY_OFFLINE: "true",
       MONGODB_URI: process.env.MONGODB_URI ?? "mongodb://127.0.0.1:27017/?directConnection=true",
       MONGODB_DB: "dairy_e2e",
     },

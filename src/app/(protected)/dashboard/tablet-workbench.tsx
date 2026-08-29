@@ -14,11 +14,17 @@ import Grid from "@mui/material/Grid";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ProductVariant } from "@/modules/inventory";
 import type { TransactionType } from "@/modules/transactions/domain/transaction";
 import { TransactionForm } from "@/modules/transactions/ui/transaction-form";
 import { formatArabicDate } from "@/shared/dates/business-date";
+import {
+  pendingMetric,
+  pendingStockChange,
+  type QueuedTransaction,
+} from "@/shared/offline/offline-queue";
+import { listenForQueueChanges, listQueuedTransactions } from "@/shared/offline/offline-store";
 import { UndoLastEntry } from "./undo-last-entry";
 
 type QuickAction = "OVERVIEW" | "PRODUCTION" | "SALE" | "RETURN";
@@ -85,7 +91,44 @@ export function TabletWorkbench({
   variants: ProductVariant[];
 }) {
   const [selectedAction, setSelectedAction] = useState<QuickAction>("OVERVIEW");
+  const [offlineEntries, setOfflineEntries] = useState<QueuedTransaction[]>([]);
   const activeAction = quickActions.find((action) => action.id === selectedAction)!;
+  useEffect(() => {
+    const refresh = () =>
+      void listQueuedTransactions()
+        .then(setOfflineEntries)
+        .catch(() => undefined);
+    refresh();
+    return listenForQueueChanges(refresh);
+  }, []);
+
+  const projectedDashboard = useMemo(
+    () => ({
+      ...dashboard,
+      inventory: dashboard.inventory.map((item) => {
+        const stock = item.stock + pendingStockChange(offlineEntries, item.id);
+        return { ...item, stock, kilograms: stock * item.weightKg };
+      }),
+      todayMetrics: {
+        production:
+          dashboard.todayMetrics.production +
+          pendingMetric(offlineEntries, "PRODUCTION", dashboard.today),
+        sales:
+          dashboard.todayMetrics.sales + pendingMetric(offlineEntries, "SALE", dashboard.today),
+        returns:
+          dashboard.todayMetrics.returns + pendingMetric(offlineEntries, "RETURN", dashboard.today),
+      },
+      noEntriesToday:
+        dashboard.noEntriesToday &&
+        !offlineEntries.some(
+          (entry) => entry.state === "pending" && entry.payload.businessDate === dashboard.today,
+        ),
+    }),
+    [dashboard, offlineEntries],
+  );
+  const stockByVariant = Object.fromEntries(
+    projectedDashboard.inventory.map((item) => [item.id, item.stock]),
+  );
 
   return (
     <Stack spacing={{ xs: 2, md: 2.5 }}>
@@ -197,12 +240,13 @@ export function TabletWorkbench({
             }}
           >
             {selectedAction === "OVERVIEW" ? (
-              <DashboardOverview dashboard={dashboard} />
+              <DashboardOverview dashboard={projectedDashboard} />
             ) : (
               <TransactionForm
                 embedded
                 type={selectedAction as TransactionType}
                 variants={variants}
+                stockByVariant={stockByVariant}
               />
             )}
           </Paper>

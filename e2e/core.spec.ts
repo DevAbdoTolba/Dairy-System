@@ -29,6 +29,25 @@ test("owner can record production, sale and return while protecting stock", asyn
   await page.goto("/inventory");
   await expect(page.getByRole("heading", { name: "المخزون الحالي" })).toBeVisible();
 });
+test("tablet queues work offline and synchronizes it after reconnecting", async ({
+  page,
+  context,
+}) => {
+  await login(page);
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  await page.getByRole("button", { name: "إضافة تصنيع" }).click();
+  await context.setOffline(true);
+  await page.getByRole("button", { name: "5 كجم", exact: true }).first().click();
+  await page.getByRole("spinbutton", { name: "الكمية", exact: true }).fill("2");
+  await page.getByRole("button", { name: "حفظ الحركة" }).click();
+  await expect(page.getByText("تم حفظ الحركة على الجهاز")).toBeVisible();
+  await expect(page.getByText("1 بانتظار المزامنة")).toBeVisible();
+
+  await context.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.getByText("1 بانتظار المزامنة")).toBeHidden({ timeout: 15_000 });
+});
 test("core login page is RTL and has no serious accessibility violations", async ({ page }) => {
   await page.goto("/login");
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");

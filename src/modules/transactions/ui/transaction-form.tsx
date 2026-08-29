@@ -11,8 +11,10 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { todayInCairo } from "@/shared/dates/business-date";
+import { submitTransactionOfflineFirst } from "@/shared/offline/offline-sync";
 import { transactionMeta, type TransactionType } from "../domain/transaction";
 import type { ProductVariant } from "@/modules/inventory";
 
@@ -27,12 +29,16 @@ export function TransactionForm({
   type,
   variants,
   embedded = false,
+  stockByVariant,
 }: {
   type: TransactionType;
   variants: ProductVariant[];
   /** Removes the outer card when this form is placed inside the tablet workbench. */
   embedded?: boolean;
+  /** Last server balance plus any locally queued operations. */
+  stockByVariant?: Record<string, number>;
 }) {
+  const router = useRouter();
   const quantityRef = useRef<HTMLInputElement>(null);
   const [variantId, setVariantId] = useState(variants[0]?.id ?? "");
   const [quantity, setQuantity] = useState(1);
@@ -95,24 +101,29 @@ export function TransactionForm({
       setError("اكتب سبباً للسماح بالرصيد السالب.");
       return;
     }
+    const lowersStock = type === "SALE" || type === "ADJUSTMENT_OUT";
+    const estimatedStock = stockByVariant?.[variantId];
+    if (
+      lowersStock &&
+      !allowNegative &&
+      estimatedStock !== undefined &&
+      quantity > estimatedStock
+    ) {
+      setError(`الرصيد المتاح على هذا الجهاز هو ${estimatedStock} صفيحة فقط.`);
+      return;
+    }
     setSubmitting(true);
     try {
-      const response = await fetch("/api/transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productVariantId: variantId,
-          type,
-          quantity,
-          businessDate,
-          note,
-          allowNegative,
-          overrideReason,
-          idempotencyKey: crypto.randomUUID(),
-        }),
+      const result = await submitTransactionOfflineFirst({
+        productVariantId: variantId,
+        type,
+        quantity,
+        businessDate,
+        note,
+        allowNegative,
+        overrideReason,
+        idempotencyKey: crypto.randomUUID(),
       });
-      const body = (await response.json()) as { error?: string; duplicate?: boolean };
-      if (!response.ok) throw new Error(body.error ?? "تعذر حفظ الحركة.");
       localStorage.setItem(
         storageKey,
         JSON.stringify({
@@ -123,12 +134,17 @@ export function TransactionForm({
         } satisfies StoredEntry),
       );
       setMessage(
-        body.duplicate ? "كانت هذه الحركة محفوظة بالفعل." : "تم حفظ الحركة وتحديث الرصيد.",
+        result.status === "queued"
+          ? "تم حفظ الحركة على الجهاز وستُزامن تلقائياً عند عودة الإنترنت."
+          : result.duplicate
+            ? "كانت هذه الحركة محفوظة بالفعل."
+            : "تم حفظ الحركة وتحديث الرصيد.",
       );
       setQuantity(1);
       setNote("");
       setAllowNegative(false);
       setOverrideReason("");
+      if (result.status === "synced") router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تعذر حفظ الحركة.");
     } finally {

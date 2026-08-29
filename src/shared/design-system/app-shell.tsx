@@ -14,6 +14,8 @@ import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { listQueuedTransactions } from "@/shared/offline/offline-store";
+import { OfflineStatus } from "./offline-status";
 
 const links = [
   ["/dashboard", "الرئيسية", SpaceDashboardOutlinedIcon],
@@ -27,7 +29,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    let queuedCount = 0;
+    try {
+      queuedCount = (await listQueuedTransactions()).length;
+    } catch {
+      // No outbox exists if this browser has disabled IndexedDB entirely.
+    }
+    if (queuedCount > 0) {
+      window.alert("توجد عمليات لم تُزامن بعد. صِل الجهاز بالإنترنت وأكمل المزامنة قبل الخروج.");
+      return;
+    }
+    const response = await fetch("/api/auth/logout", { method: "POST" });
+    if (!response.ok) {
+      window.alert("تعذر تسجيل الخروج. تحقق من الاتصال ثم حاول مرة أخرى.");
+      return;
+    }
+    navigator.serviceWorker?.controller?.postMessage({ type: "CLEAR_PRIVATE_CACHE" });
     router.push("/login");
     router.refresh();
   }
@@ -70,6 +87,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Button>
           ))}
         </Stack>
+        <OfflineStatus />
         {children}
       </Container>
     </Box>

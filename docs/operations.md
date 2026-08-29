@@ -25,3 +25,7 @@ docker compose exec dairy-system npm run restore -- /app/backups/dairy-backup-YY
 ## Vercel وAtlas
 
 أضف `MONGODB_URI` و`MONGODB_DB` و`DAIRY_OWNER_PIN` و`DAIRY_SESSION_SECRET` في إعدادات Vercel. راجع [دليل Vercel وAtlas](vercel-atlas.md) للتفاصيل. لا تستخدم نسخة Vercel preview على قاعدة الإنتاج أثناء تجربة الاستعادة.
+
+## تشغيل PWA دون إنترنت
+
+افتح التطبيق عبر HTTPS وسجّل الدخول مرة واحدة، ثم ثبته من قائمة المتصفح على الجهاز اللوحي وفعّل التنبيهات من شريط حالة الاتصال. تختبر المزامنة بقطع الشبكة، تسجيل حركة، ثم إعادة الشبكة ومراقبة اختفاء عداد الانتظار. التفاصيل وحدود دعم المتصفحات في [دليل العمل دون إنترنت](offline.md).
