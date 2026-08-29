@@ -12,8 +12,12 @@ test("owner can record production, sale and return while protecting stock", asyn
 }, testInfo) => {
   await login(page);
   await page.screenshot({ path: testInfo.outputPath("dashboard.png"), fullPage: true });
-  await page.getByRole("button", { name: "إضافة تصنيع" }).click();
+  await page.getByRole("button", { name: "إضافة تصنيع لوزن 5 كجم" }).click();
   await expect(page.getByRole("heading", { name: "إضافة تصنيع" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "5 كجم", exact: true }).first()).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await page.screenshot({ path: testInfo.outputPath("production-workspace.png"), fullPage: true });
   await page.getByRole("button", { name: "5 كجم", exact: true }).first().click();
   await page.getByRole("spinbutton", { name: "الكمية", exact: true }).fill("3");

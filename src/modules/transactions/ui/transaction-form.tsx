@@ -30,6 +30,7 @@ export function TransactionForm({
   variants,
   embedded = false,
   stockByVariant,
+  initialVariantId,
 }: {
   type: TransactionType;
   variants: ProductVariant[];
@@ -37,10 +38,16 @@ export function TransactionForm({
   embedded?: boolean;
   /** Last server balance plus any locally queued operations. */
   stockByVariant?: Record<string, number>;
+  /** Opens the form with a weight selected by the parent workbench. */
+  initialVariantId?: string;
 }) {
   const router = useRouter();
   const quantityRef = useRef<HTMLInputElement>(null);
-  const [variantId, setVariantId] = useState(variants[0]?.id ?? "");
+  const [variantId, setVariantId] = useState(
+    variants.some((variant) => variant.id === initialVariantId)
+      ? (initialVariantId ?? "")
+      : (variants[0]?.id ?? ""),
+  );
   const [quantity, setQuantity] = useState(1);
   const [businessDate, setBusinessDate] = useState(todayInCairo());
   const [note, setNote] = useState("");
@@ -55,6 +62,10 @@ export function TransactionForm({
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
+      if (initialVariantId && variants.some((variant) => variant.id === initialVariantId)) {
+        setVariantId(initialVariantId);
+        return;
+      }
       const stored = localStorage.getItem(storageKey);
       if (!stored) return;
       try {
@@ -67,7 +78,7 @@ export function TransactionForm({
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [storageKey, variants]);
+  }, [initialVariantId, storageKey, variants]);
 
   function selectVariant(id: string) {
     setVariantId(id);

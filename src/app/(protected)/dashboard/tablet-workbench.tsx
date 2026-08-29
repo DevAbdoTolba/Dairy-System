@@ -9,6 +9,7 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
+import CardActionArea from "@mui/material/CardActionArea";
 import CardContent from "@mui/material/CardContent";
 import Grid from "@mui/material/Grid";
 import Paper from "@mui/material/Paper";
@@ -91,6 +92,7 @@ export function TabletWorkbench({
   variants: ProductVariant[];
 }) {
   const [selectedAction, setSelectedAction] = useState<QuickAction>("OVERVIEW");
+  const [productionVariantId, setProductionVariantId] = useState(variants[0]?.id ?? "");
   const [offlineEntries, setOfflineEntries] = useState<QueuedTransaction[]>([]);
   const activeAction = quickActions.find((action) => action.id === selectedAction)!;
   useEffect(() => {
@@ -129,6 +131,11 @@ export function TabletWorkbench({
   const stockByVariant = Object.fromEntries(
     projectedDashboard.inventory.map((item) => [item.id, item.stock]),
   );
+
+  function startProductionForVariant(productVariantId: string) {
+    setProductionVariantId(productVariantId);
+    setSelectedAction("PRODUCTION");
+  }
 
   return (
     <Stack spacing={{ xs: 2, md: 2.5 }}>
@@ -240,13 +247,17 @@ export function TabletWorkbench({
             }}
           >
             {selectedAction === "OVERVIEW" ? (
-              <DashboardOverview dashboard={projectedDashboard} />
+              <DashboardOverview
+                dashboard={projectedDashboard}
+                onStartProduction={startProductionForVariant}
+              />
             ) : (
               <TransactionForm
                 embedded
                 type={selectedAction as TransactionType}
                 variants={variants}
                 stockByVariant={stockByVariant}
+                initialVariantId={selectedAction === "PRODUCTION" ? productionVariantId : undefined}
               />
             )}
           </Paper>
@@ -256,7 +267,13 @@ export function TabletWorkbench({
   );
 }
 
-function DashboardOverview({ dashboard }: { dashboard: DashboardData }) {
+function DashboardOverview({
+  dashboard,
+  onStartProduction,
+}: {
+  dashboard: DashboardData;
+  onStartProduction: (productVariantId: string) => void;
+}) {
   return (
     <Stack spacing={2.5}>
       <Box>
@@ -275,26 +292,35 @@ function DashboardOverview({ dashboard }: { dashboard: DashboardData }) {
         {dashboard.inventory.map((item) => (
           <Grid key={item.id} size={{ xs: 6, sm: 4, md: 6 }}>
             <Card sx={{ height: "100%" }}>
-              <CardContent sx={{ p: 1.75, "&:last-child": { pb: 1.75 } }}>
-                <Typography color="text.secondary" variant="body2">
-                  {item.nameAr}
-                </Typography>
-                <Typography variant="h2" sx={{ mt: 0.5 }}>
-                  {item.stock} صفيحة
-                </Typography>
-                <Typography color="text.secondary" variant="body2">
-                  {item.kilograms} كجم
-                </Typography>
-                {item.stock <= 0 && (
-                  <Typography
-                    color={item.stock < 0 ? "error.main" : "warning.main"}
-                    variant="body2"
-                    sx={{ mt: 0.75, fontWeight: 800 }}
-                  >
-                    {item.stock < 0 ? "رصيد سالب" : "الرصيد صفر"}
+              <CardActionArea
+                onClick={() => onStartProduction(item.id)}
+                aria-label={`إضافة تصنيع لوزن ${item.weightKg} كجم`}
+                sx={{ height: "100%", textAlign: "right" }}
+              >
+                <CardContent sx={{ p: 1.75, "&:last-child": { pb: 1.75 } }}>
+                  <Typography color="text.secondary" variant="body2">
+                    {item.nameAr}
                   </Typography>
-                )}
-              </CardContent>
+                  <Typography variant="h2" sx={{ mt: 0.5 }}>
+                    {item.stock} صفيحة
+                  </Typography>
+                  <Typography color="text.secondary" variant="body2">
+                    {item.kilograms} كجم
+                  </Typography>
+                  {item.stock <= 0 && (
+                    <Typography
+                      color={item.stock < 0 ? "error.main" : "warning.main"}
+                      variant="body2"
+                      sx={{ mt: 0.75, fontWeight: 800 }}
+                    >
+                      {item.stock < 0 ? "رصيد سالب" : "الرصيد صفر"}
+                    </Typography>
+                  )}
+                  <Typography color="primary.main" variant="body2" sx={{ mt: 1, fontWeight: 800 }}>
+                    اضغط لإضافة تصنيع
+                  </Typography>
+                </CardContent>
+              </CardActionArea>
             </Card>
           </Grid>
         ))}
