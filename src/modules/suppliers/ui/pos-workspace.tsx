@@ -88,6 +88,8 @@ const viewportHeaderNameSize = "clamp(1.7rem, min(4.4vw, 6dvh), 4rem)";
 const viewportHeaderIconSize = "clamp(2rem, min(3vw, 6dvh), 3rem)";
 const viewportCounterGap = "clamp(12px, 2.5dvh, 32px)";
 const viewportCounterSize = "clamp(44px, 5dvh, 64px)";
+const weighingControlSize = "min(29vw, 350px, calc(100dvh - 230px))";
+const cashControlSize = "min(29vw, 300px, calc((100dvh - 300px) / 2))";
 
 function requestId() {
   return crypto.randomUUID();
@@ -813,7 +815,7 @@ export function PosWorkspace({
                 sx={{
                   display: "block",
                   width: "100%",
-                  minHeight: "clamp(104px, min(12vw, 16dvh), 146px)",
+                  minHeight: "clamp(88px, min(12vw, 16dvh), 132px)",
                   border: "2px solid",
                   borderColor: "primary.main",
                   borderRadius: 1.25,
@@ -891,7 +893,7 @@ export function PosWorkspace({
               <Grid
                 container
                 spacing={{ xs: 1, sm: 1.5 }}
-                sx={{ width: "min(100%, 1120px)", mx: "auto" }}
+                sx={{ width: "min(100%, 960px)", mx: "auto" }}
               >
                 {cashAmounts.map((amount) => (
                   <Grid
@@ -902,8 +904,8 @@ export function PosWorkspace({
                     <Stack
                       spacing={0.5}
                       sx={{
-                        width: "min(29vw, 350px, 18dvh)",
-                        flex: "0 1 29vw",
+                        width: cashControlSize,
+                        flex: "0 1 auto",
                         alignItems: "center",
                       }}
                     >
@@ -1095,7 +1097,7 @@ function TapQuantity({
       {rows.map((row) => (
         <Stack
           key={row.label}
-          sx={{ width: "min(29vw, 350px, 34dvh)", flex: "0 1 29vw", alignItems: "center" }}
+          sx={{ width: weighingControlSize, flex: "0 1 auto", alignItems: "center" }}
         >
           <Button
             type="button"
