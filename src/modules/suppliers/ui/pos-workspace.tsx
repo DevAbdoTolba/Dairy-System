@@ -286,8 +286,15 @@ export function PosWorkspace({
   }
 
   async function saveMilk() {
-    if (!data || !selectedSupplier || !milkType || data.shift.status !== "OPEN" || !quantityUnits)
+    if (!data || !selectedSupplier || data.shift.status !== "OPEN") return;
+    if (!milkType) {
+      setError("اختاري نوع اللبن أولاً.");
       return;
+    }
+    if (!quantityUnits) {
+      setError("اختاري كمية أولاً.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -521,7 +528,7 @@ export function PosWorkspace({
   }
 
   return (
-    <Box component="section" sx={{ minHeight: "calc(100vh - 48px)", pb: 10 }}>
+    <Box component="section" sx={{ minHeight: "calc(100dvh - 48px)", pb: 10 }}>
       {error && (
         <Alert severity="error" sx={{ mb: 1 }}>
           {error}
@@ -530,32 +537,49 @@ export function PosWorkspace({
       <Paper
         component="section"
         aria-label="اختيار المورد"
-        sx={{ p: { xs: 1.5, sm: 2 }, minHeight: selectedSupplier ? "auto" : "calc(100vh - 70px)" }}
+        sx={{
+          p: selectedSupplier ? { xs: 0.5, sm: 1 } : { xs: 1.5, sm: 2 },
+          minHeight: "calc(100dvh - 70px)",
+        }}
       >
-        <Stack spacing={1.5}>
+        <Stack
+          spacing={1.5}
+          sx={{ minHeight: selectedSupplier ? "calc(100dvh - 86px)" : undefined }}
+        >
           <Box sx={{ position: "relative" }}>
             <Box
               component="button"
               type="button"
-              disabled={!selectedSupplier || !milkType || !quantityUnits || busy}
-              onClick={saveMilk}
+              disabled={!selectedSupplier || busy || data.shift.status !== "OPEN"}
+              onClick={() => void saveMilk()}
               aria-label={
                 selectedSupplier ? `تسجيل كمية ${selectedSupplier.displayName}` : "المورد المختار"
               }
               sx={{
                 display: "block",
                 width: "100%",
-                minHeight: 54,
+                minHeight: { xs: 78, sm: "clamp(88px, 10vw, 140px)" },
                 border: "2px solid",
                 borderColor: selectedSupplier ? "primary.main" : "divider",
                 borderRadius: 1.25,
                 color: "text.primary",
                 backgroundColor: "transparent",
-                cursor: selectedSupplier && milkType && quantityUnits ? "pointer" : "default",
+                cursor: selectedSupplier && !busy ? "pointer" : "default",
                 "&:disabled": { color: "text.primary", opacity: 1 },
               }}
             >
-              <Typography component="h1" variant="h3" align="center" sx={{ p: 1 }}>
+              <Typography
+                component="span"
+                align="center"
+                sx={{
+                  display: "block",
+                  px: { xs: 6, sm: 8 },
+                  py: 1,
+                  fontSize: "clamp(1.7rem, 4.4vw, 4rem)",
+                  fontWeight: 800,
+                  lineHeight: 1.1,
+                }}
+              >
                 {selectedSupplier?.displayName ?? (prefix.length ? prefix.join(" ") : " ")}
               </Typography>
             </Box>
@@ -633,7 +657,7 @@ export function PosWorkspace({
           )}
 
           {selectedSupplier && (
-            <Stack spacing={1.5}>
+            <Stack spacing={1.5} sx={{ flexGrow: 1, justifyContent: "center", pb: "8vh" }}>
               {selectedSupplier.posInstruction && (
                 <Typography color="text.secondary">{selectedSupplier.posInstruction}</Typography>
               )}
@@ -908,7 +932,12 @@ function TapQuantity({
     { label: "الربع", value: quarters, onAdd: onAddQuarter, onRemove: onRemoveQuarter },
   ];
   return (
-    <Grid container spacing={{ xs: 1.5, sm: 2 }} aria-label="الكمية" sx={{ pt: 3 }}>
+    <Grid
+      container
+      spacing={{ xs: 1, sm: 2 }}
+      aria-label="الكمية"
+      sx={{ width: "min(100%, 1120px)", mx: "auto", pt: "clamp(8px, 3vh, 32px)" }}
+    >
       {rows.map((row) => (
         <Grid key={row.label} size={{ xs: 4 }}>
           <Stack spacing={0.75} sx={{ alignItems: "center" }}>
@@ -918,11 +947,10 @@ function TapQuantity({
               onClick={row.onAdd}
               aria-label={`إضافة ${row.label}`}
               sx={{
-                width: "100%",
+                width: "clamp(94px, 27vw, 340px)",
                 minWidth: 0,
-                maxWidth: 190,
                 aspectRatio: "1",
-                fontSize: { xs: "1.25rem", sm: "1.6rem" },
+                fontSize: "clamp(1.1rem, 2.5vw, 2.2rem)",
                 fontWeight: 800,
                 borderWidth: 3,
                 borderColor: "text.primary",
@@ -937,9 +965,9 @@ function TapQuantity({
               onClick={row.onRemove}
               aria-label={`إنقاص ${row.label}`}
               sx={{
-                minHeight: 44,
-                minWidth: 44,
-                fontSize: "1.65rem",
+                minHeight: "clamp(44px, 5vw, 64px)",
+                minWidth: "clamp(44px, 5vw, 64px)",
+                fontSize: "clamp(1.65rem, 3vw, 2.6rem)",
                 fontWeight: 800,
                 color: "text.primary",
               }}
