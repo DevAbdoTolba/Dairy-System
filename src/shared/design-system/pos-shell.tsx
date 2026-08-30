@@ -58,7 +58,7 @@ export function PosShell({ children }: { children: React.ReactNode }) {
       <Typography
         component="time"
         aria-label="الوقت الحالي"
-        sx={{ display: "block", px: 2, pt: 1.25, textAlign: "center", fontWeight: 700 }}
+        sx={{ display: "block", px: 2, pt: 1.25, textAlign: "right", fontWeight: 700 }}
       >
         {time}
       </Typography>

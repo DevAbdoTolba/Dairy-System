@@ -1,6 +1,7 @@
 "use client";
 
 import CloseOutlinedIcon from "@mui/icons-material/CloseOutlined";
+import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import HistoryOutlinedIcon from "@mui/icons-material/HistoryOutlined";
@@ -49,7 +50,11 @@ type CashRecord = PosBootstrap["cashRecords"][number];
 
 const shiftLabels: Record<ShiftType, string> = { MORNING: "وردية صباحية", NIGHT: "وردية مسائية" };
 const milkLabels: Record<MilkType, string> = { COW: "لبن بقري", BUFFALO: "لبن جاموسي" };
-const cashAmounts = [10, 20, 50, 100];
+const cashAmounts = [5, 10, 20, 50, 100, 200] as const;
+
+function emptyCashCounts(): Record<(typeof cashAmounts)[number], number> {
+  return { 5: 0, 10: 0, 20: 0, 50: 0, 100: 0, 200: 0 };
+}
 
 const vintageNameButtonSx = {
   minHeight: { xs: 76, sm: 88 },
@@ -75,6 +80,14 @@ function supplierMilkTypes(supplier: PosBootstrap["suppliers"][number] | null) {
   return supplier?.milkTypes?.length ? supplier.milkTypes : [...milkTypes];
 }
 
+function cairoClock() {
+  return new Intl.DateTimeFormat("ar-EG", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Africa/Cairo",
+  }).format(new Date());
+}
+
 export function PosWorkspace({
   businessDate,
   credentialRole,
@@ -89,7 +102,8 @@ export function PosWorkspace({
   const [satls, setSatls] = useState(0);
   const [cups, setCups] = useState(0);
   const [quarters, setQuarters] = useState(0);
-  const [cashParts, setCashParts] = useState<number[]>([]);
+  const [cashCounts, setCashCounts] =
+    useState<Record<(typeof cashAmounts)[number], number>>(emptyCashCounts);
   const [cashOpen, setCashOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<TimelineEntry | null>(null);
   const [busy, setBusy] = useState(false);
@@ -108,7 +122,10 @@ export function PosWorkspace({
     [data, prefix],
   );
   const quantityUnits = satls * 24 + cups * 4 + quarters;
-  const cashPiasters = cashParts.reduce((total, amount) => total + amount * 100, 0);
+  const cashPiasters = cashAmounts.reduce(
+    (total, amount) => total + amount * cashCounts[amount] * 100,
+    0,
+  );
 
   const loadBootstrap = useCallback(
     async (shiftId: string) => {
@@ -225,7 +242,7 @@ export function PosWorkspace({
     setMilkType(null);
     setPrefix([]);
     setEditingEntry(null);
-    setCashParts([]);
+    setCashCounts(emptyCashCounts());
     resetQuantity();
   }
 
@@ -303,8 +320,7 @@ export function PosWorkspace({
             },
       });
       setData(localData);
-      setEditingEntry(null);
-      resetQuantity();
+      finishSupplier();
       const result = await syncPersistedSupplierCommand<{ entry: TimelineEntry }>(outboxEntry);
       if (result.status === "synced") await loadBootstrap(data.shift.id);
     } catch (caught) {
@@ -387,7 +403,7 @@ export function PosWorkspace({
         },
       });
       setData(localData);
-      setCashParts([]);
+      setCashCounts(emptyCashCounts());
       setCashOpen(false);
       const result = await syncPersistedSupplierCommand<{ movement: { id: string } }>(outboxEntry);
       if (result.status === "synced") await loadBootstrap(data.shift.id);
@@ -489,14 +505,9 @@ export function PosWorkspace({
         sx={{ p: { xs: 1.5, sm: 2 }, minHeight: selectedSupplier ? "auto" : "calc(100vh - 70px)" }}
       >
         <Stack spacing={1.5}>
-          <Button
-            type="button"
-            fullWidth
-            disabled={!selectedSupplier || !milkType || !quantityUnits || busy}
-            onClick={saveMilk}
-            aria-label={
-              selectedSupplier ? `تسجيل كمية ${selectedSupplier.displayName}` : "اسم المورد المختار"
-            }
+          <Paper
+            aria-label="المورد المختار"
+            variant="outlined"
             sx={{
               minHeight: 82,
               border: "2px solid",
@@ -507,8 +518,10 @@ export function PosWorkspace({
               fontWeight: 800,
             }}
           >
-            {selectedSupplier?.displayName ?? " "}
-          </Button>
+            <Typography component="h1" variant="h2" align="center" sx={{ p: 2 }}>
+              {selectedSupplier?.displayName ?? " "}
+            </Typography>
+          </Paper>
 
           {!selectedSupplier && (
             <>
@@ -573,18 +586,14 @@ export function PosWorkspace({
 
           {selectedSupplier && (
             <Stack spacing={1.5}>
-              <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: "wrap" }}>
-                <Button type="button" size="small" onClick={finishSupplier}>
-                  مورد آخر
-                </Button>
+              <Stack direction="row" sx={{ justifyContent: "flex-end" }}>
                 <Button
                   type="button"
                   size="small"
+                  aria-label="آخر الحركات"
                   startIcon={<HistoryOutlinedIcon />}
                   onClick={() => setHistoryOpen(true)}
-                >
-                  آخر الحركات
-                </Button>
+                />
               </Stack>
               {selectedSupplier.posInstruction && (
                 <Typography color="text.secondary">{selectedSupplier.posInstruction}</Typography>
@@ -623,7 +632,7 @@ export function PosWorkspace({
                   />
                   {editingEntry && (
                     <Typography color="text.secondary" align="center">
-                      اضغط الاسم لحفظ التعديل
+                      اضغط علامة الحفظ لتسجيل التعديل
                     </Typography>
                   )}
                 </>
@@ -638,70 +647,125 @@ export function PosWorkspace({
         aria-label="خصم نقد للمورد"
         disabled={!selectedSupplier || busy || data.shift.status !== "OPEN"}
         onClick={() => setCashOpen(true)}
-        sx={{ position: "fixed", bottom: 22, left: 22 }}
+        sx={{ position: "fixed", bottom: 22, right: 22 }}
       >
         <MoneyOffOutlinedIcon />
+      </Fab>
+      <Fab
+        aria-label="حفظ كمية اللبن"
+        disabled={!selectedSupplier || !milkType || !quantityUnits || busy}
+        onClick={saveMilk}
+        sx={{
+          position: "fixed",
+          bottom: 22,
+          left: "50%",
+          transform: "translateX(-50%)",
+          color: "#fff",
+          backgroundColor: "#7455c8",
+          "&:hover": { backgroundColor: "#6044ae" },
+        }}
+      >
+        <CheckRoundedIcon />
       </Fab>
       <Fab
         color="warning"
         aria-label="إنهاء الوردية"
         disabled={busy || data.shift.status !== "OPEN"}
         onClick={closeShift}
-        sx={{ position: "fixed", bottom: 22, right: 22 }}
+        sx={{ position: "fixed", bottom: 22, left: 22 }}
       >
         <CloseOutlinedIcon />
       </Fab>
 
-      <Dialog open={cashOpen} onClose={() => !busy && setCashOpen(false)} fullWidth maxWidth="xs">
-        <DialogTitle>خصم نقد — {selectedSupplier?.displayName}</DialogTitle>
-        <DialogContent>
-          <Stack spacing={1.5} sx={{ pt: 1 }}>
-            <Grid container spacing={1}>
+      <Dialog open={cashOpen} onClose={() => !busy && setCashOpen(false)} fullScreen>
+        <Box component="section" sx={{ minHeight: "100vh", p: { xs: 1.5, sm: 2 }, pb: 10 }}>
+          <Stack spacing={1.25} sx={{ maxWidth: 760, mx: "auto" }}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+              <Paper variant="outlined" sx={{ flexGrow: 1, borderWidth: 2, p: 1 }}>
+                <Typography component="h2" variant="h2" align="center">
+                  {selectedSupplier?.displayName}
+                </Typography>
+              </Paper>
+              <Typography component="time" aria-label="الوقت الحالي" sx={{ fontWeight: 800 }}>
+                {cairoClock()}
+              </Typography>
+            </Stack>
+            {selectedSupplier?.posInstruction && (
+              <Paper variant="outlined" sx={{ p: 0.75 }}>
+                <Typography align="center">{selectedSupplier.posInstruction}</Typography>
+              </Paper>
+            )}
+            <Grid container spacing={{ xs: 1.25, sm: 2 }} sx={{ pt: 1 }}>
               {cashAmounts.map((amount) => (
-                <Grid key={amount} size={{ xs: 6 }}>
-                  <Button
-                    type="button"
-                    fullWidth
-                    variant="outlined"
-                    disabled={busy}
-                    onClick={() => setCashParts((parts) => [...parts, amount])}
-                    sx={{ minHeight: 64, fontSize: "1.2rem" }}
-                  >
-                    {amount} ج
-                  </Button>
+                <Grid key={amount} size={{ xs: 4 }}>
+                  <Stack spacing={0.5} sx={{ alignItems: "center" }}>
+                    <Button
+                      type="button"
+                      variant="outlined"
+                      disabled={busy}
+                      onClick={() =>
+                        setCashCounts((counts) => ({ ...counts, [amount]: counts[amount] + 1 }))
+                      }
+                      sx={{
+                        width: "100%",
+                        maxWidth: 166,
+                        minWidth: 0,
+                        aspectRatio: "1",
+                        borderRadius: "50%",
+                        fontSize: { xs: "1.35rem", sm: "1.7rem" },
+                        fontWeight: 800,
+                      }}
+                    >
+                      {amount}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="text"
+                      disabled={busy || cashCounts[amount] === 0}
+                      onClick={() =>
+                        setCashCounts((counts) => ({
+                          ...counts,
+                          [amount]: Math.max(0, counts[amount] - 1),
+                        }))
+                      }
+                      aria-label={`إنقاص عدد فئة ${amount} جنيه`}
+                      sx={{ minHeight: 36, minWidth: 44, fontSize: "1.25rem", fontWeight: 800 }}
+                    >
+                      {cashCounts[amount]}
+                    </Button>
+                  </Stack>
                 </Grid>
               ))}
             </Grid>
-            <Button
-              type="button"
-              variant="text"
-              disabled={cashParts.length === 0 || busy}
-              onClick={() => setCashParts((parts) => parts.slice(0, -1))}
-              sx={{ minHeight: 64, fontSize: "1.7rem", fontWeight: 800 }}
-              aria-label="حذف آخر مبلغ مضاف"
-            >
-              {new Intl.NumberFormat("ar-EG", { style: "currency", currency: "EGP" }).format(
-                cashPiasters / 100,
-              )}
-            </Button>
-            <Typography align="center" color="text.secondary">
-              اضغط المبلغ لإضافة نقد، واضغط الرقم لإلغاء آخر مبلغ.
-            </Typography>
           </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button type="button" disabled={busy} onClick={() => setCashOpen(false)}>
-            إلغاء
-          </Button>
-          <Button
-            type="button"
-            variant="contained"
+          <Fab
+            aria-label="حفظ خصم النقد"
             disabled={busy || cashPiasters <= 0}
             onClick={saveCash}
+            sx={{
+              position: "fixed",
+              bottom: 22,
+              left: "50%",
+              transform: "translateX(-50%)",
+              color: "#fff",
+              backgroundColor: "#7455c8",
+              "&:hover": { backgroundColor: "#6044ae" },
+            }}
           >
-            خصم النقد
-          </Button>
-        </DialogActions>
+            <CheckRoundedIcon />
+          </Fab>
+          <Fab
+            aria-label="العودة إلى اللبن"
+            disabled={busy}
+            onClick={() => {
+              setCashCounts(emptyCashCounts());
+              setCashOpen(false);
+            }}
+            sx={{ position: "fixed", bottom: 22, right: 22 }}
+          >
+            ←
+          </Fab>
+        </Box>
       </Dialog>
 
       <Dialog
@@ -813,46 +877,47 @@ function TapQuantity({
     { label: "الربع", value: quarters, onAdd: onAddQuarter, onRemove: onRemoveQuarter },
   ];
   return (
-    <Stack spacing={1} aria-label="الكمية">
+    <Grid container spacing={{ xs: 1.5, sm: 2 }} aria-label="الكمية" sx={{ pt: 3 }}>
       {rows.map((row) => (
-        <Stack key={row.label} direction="row" spacing={1} sx={{ alignItems: "stretch" }}>
-          <Button
-            type="button"
-            variant="outlined"
-            onClick={row.onAdd}
-            aria-label={`إضافة ${row.label}`}
-            sx={{
-              minWidth: { xs: 116, sm: 150 },
-              minHeight: 66,
-              fontSize: "1.2rem",
-              fontWeight: 800,
-            }}
-          >
-            {row.label}
-          </Button>
-          <Button
-            type="button"
-            variant="text"
-            onClick={row.onRemove}
-            aria-label={`إنقاص ${row.label}`}
-            sx={{
-              flexGrow: 1,
-              minHeight: 66,
-              fontSize: "2rem",
-              fontWeight: 800,
-              color: "text.primary",
-              border: "1px solid",
-              borderColor: "divider",
-              borderRadius: 1.25,
-            }}
-          >
-            {row.value}
-          </Button>
-        </Stack>
+        <Grid key={row.label} size={{ xs: 4 }}>
+          <Stack spacing={0.75} sx={{ alignItems: "center" }}>
+            <Button
+              type="button"
+              variant="outlined"
+              onClick={row.onAdd}
+              aria-label={`إضافة ${row.label}`}
+              sx={{
+                width: "100%",
+                minWidth: 0,
+                maxWidth: 190,
+                aspectRatio: "1",
+                fontSize: { xs: "1.25rem", sm: "1.6rem" },
+                fontWeight: 800,
+                borderWidth: 3,
+                borderColor: "text.primary",
+                borderRadius: 1.25,
+              }}
+            >
+              {row.label}
+            </Button>
+            <Button
+              type="button"
+              variant="text"
+              onClick={row.onRemove}
+              aria-label={`إنقاص ${row.label}`}
+              sx={{
+                minHeight: 44,
+                minWidth: 44,
+                fontSize: "1.65rem",
+                fontWeight: 800,
+                color: "text.primary",
+              }}
+            >
+              {row.value}
+            </Button>
+          </Stack>
+        </Grid>
       ))}
-      <Typography align="center" color="text.secondary">
-        اضغط الاسم لإضافة الكمية، واضغط الرقم لإزالة واحد.
-      </Typography>
-    </Stack>
+    </Grid>
   );
 }
