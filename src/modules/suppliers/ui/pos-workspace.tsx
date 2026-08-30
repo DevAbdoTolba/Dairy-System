@@ -297,6 +297,7 @@ export function PosWorkspace({
     }
     setBusy(true);
     setError(null);
+    let savedLocally = false;
     try {
       const quantityQuarterCupUnits = quantityFromParts({ satls, cups, quarters });
       const createdAt = new Date().toISOString();
@@ -344,14 +345,16 @@ export function PosWorkspace({
               quantityQuarterCupUnits,
             },
       });
+      savedLocally = true;
       setData(localData);
-      setEditingEntry(null);
-      resetQuantity();
+      finishSupplier();
       const result = await syncPersistedSupplierCommand<{ entry: TimelineEntry }>(outboxEntry);
-      if (result.status === "synced") await loadBootstrap(data.shift.id);
+      if (result.status === "synced") void loadBootstrap(data.shift.id).catch(() => undefined);
     } catch (caught) {
-      setData(data);
-      void cachePosWorkspace(data);
+      if (!savedLocally) {
+        setData(data);
+        void cachePosWorkspace(data);
+      }
       setError(caught instanceof Error ? caught.message : "تعذر حفظ اللبن.");
     } finally {
       setBusy(false);
@@ -605,6 +608,25 @@ export function PosWorkspace({
             >
               {selectedSupplier ? <HistoryOutlinedIcon /> : <ReplayOutlinedIcon />}
             </IconButton>
+            {selectedSupplier && (
+              <IconButton
+                type="button"
+                aria-label="إلغاء المورد"
+                onClick={finishSupplier}
+                sx={{
+                  position: "absolute",
+                  top: 5,
+                  right: 5,
+                  minWidth: 44,
+                  minHeight: 44,
+                  border: "2px solid #8b6945",
+                  color: "#3e2d1c",
+                  backgroundColor: "#fffaf0",
+                }}
+              >
+                <CloseOutlinedIcon />
+              </IconButton>
+            )}
           </Box>
 
           {!selectedSupplier && (
