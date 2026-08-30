@@ -932,51 +932,58 @@ function TapQuantity({
     { label: "الربع", value: quarters, onAdd: onAddQuarter, onRemove: onRemoveQuarter },
   ];
   return (
-    <Grid
-      container
-      spacing={{ xs: 1, sm: 2 }}
+    <Stack
+      direction="row"
+      spacing={{ xs: 1.25, sm: 2.5 }}
       aria-label="الكمية"
-      sx={{ width: "min(100%, 1120px)", mx: "auto", pt: "clamp(8px, 3vh, 32px)" }}
+      sx={{
+        width: "100%",
+        justifyContent: "center",
+        alignItems: "flex-start",
+        pt: "clamp(8px, 3vh, 32px)",
+      }}
     >
       {rows.map((row) => (
-        <Grid key={row.label} size={{ xs: 4 }}>
-          <Stack spacing={0.75} sx={{ alignItems: "center" }}>
-            <Button
-              type="button"
-              variant="outlined"
-              onClick={row.onAdd}
-              aria-label={`إضافة ${row.label}`}
-              sx={{
-                width: "clamp(94px, 27vw, 340px)",
-                minWidth: 0,
-                aspectRatio: "1",
-                fontSize: "clamp(1.1rem, 2.5vw, 2.2rem)",
-                fontWeight: 800,
-                borderWidth: 3,
-                borderColor: "text.primary",
-                borderRadius: 1.25,
-              }}
-            >
-              {row.label}
-            </Button>
-            <Button
-              type="button"
-              variant="text"
-              onClick={row.onRemove}
-              aria-label={`إنقاص ${row.label}`}
-              sx={{
-                minHeight: "clamp(44px, 5vw, 64px)",
-                minWidth: "clamp(44px, 5vw, 64px)",
-                fontSize: "clamp(1.65rem, 3vw, 2.6rem)",
-                fontWeight: 800,
-                color: "text.primary",
-              }}
-            >
-              {row.value}
-            </Button>
-          </Stack>
-        </Grid>
+        <Stack
+          key={row.label}
+          sx={{ width: "min(29vw, 350px)", flex: "0 1 29vw", alignItems: "center" }}
+        >
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={row.onAdd}
+            aria-label={`إضافة ${row.label}`}
+            sx={{
+              width: "100%",
+              minWidth: 0,
+              aspectRatio: "1",
+              fontSize: "clamp(1.1rem, 2.5vw, 2.2rem)",
+              fontWeight: 800,
+              borderWidth: 3,
+              borderColor: "text.primary",
+              borderRadius: 1.25,
+            }}
+          >
+            {row.label}
+          </Button>
+          <Button
+            type="button"
+            variant="text"
+            onClick={row.onRemove}
+            aria-label={`إنقاص ${row.label}`}
+            sx={{
+              mt: "clamp(20px, 4vh, 52px)",
+              minHeight: "clamp(44px, 5vw, 64px)",
+              minWidth: "clamp(44px, 5vw, 64px)",
+              fontSize: "clamp(1.65rem, 3vw, 2.6rem)",
+              fontWeight: 800,
+              color: "text.primary",
+            }}
+          >
+            {row.value}
+          </Button>
+        </Stack>
       ))}
-    </Grid>
+    </Stack>
   );
 }
