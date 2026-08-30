@@ -161,6 +161,23 @@ export function PosWorkspace({
     return () => window.removeEventListener("online", syncWhenOnline);
   }, [data?.shift.id, loadBootstrap]);
 
+  useEffect(() => {
+    const leaveShiftWorkspace = () => {
+      setData(null);
+      setError(null);
+      setSelectedSupplierId(null);
+      setMilkType(null);
+      setPrefix([]);
+      setEditingEntry(null);
+      setCashCounts(emptyCashCounts());
+      setSatls(0);
+      setCups(0);
+      setQuarters(0);
+    };
+    window.addEventListener("dairy-pos-leave-shift", leaveShiftWorkspace);
+    return () => window.removeEventListener("dairy-pos-leave-shift", leaveShiftWorkspace);
+  }, []);
+
   function enterFullscreen() {
     if (document.fullscreenEnabled && !document.fullscreenElement)
       void document.documentElement.requestFullscreen().catch(() => undefined);
@@ -286,7 +303,16 @@ export function PosWorkspace({
   }
 
   async function saveMilk() {
-    if (!data || !selectedSupplier || data.shift.status !== "OPEN") return;
+    if (!data) return;
+    if (!selectedSupplier) {
+      setError("اختاري المورد أولاً.");
+      return;
+    }
+    if (data.shift.status !== "OPEN") {
+      setError("الوردية مغلقة.");
+      return;
+    }
+    if (busy) return;
     if (!milkType) {
       setError("اختاري نوع اللبن أولاً.");
       return;
@@ -348,8 +374,13 @@ export function PosWorkspace({
       savedLocally = true;
       setData(localData);
       finishSupplier();
-      const result = await syncPersistedSupplierCommand<{ entry: TimelineEntry }>(outboxEntry);
-      if (result.status === "synced") void loadBootstrap(data.shift.id).catch(() => undefined);
+      void syncPersistedSupplierCommand<{ entry: TimelineEntry }>(outboxEntry)
+        .then((result) => {
+          if (result.status === "synced") void loadBootstrap(data.shift.id).catch(() => undefined);
+        })
+        .catch((error) => {
+          setError(error instanceof Error ? error.message : "تعذر مزامنة اللبن.");
+        });
     } catch (caught) {
       if (!savedLocally) {
         setData(data);
@@ -553,8 +584,8 @@ export function PosWorkspace({
             <Box
               component="button"
               type="button"
-              disabled={!selectedSupplier || busy || data.shift.status !== "OPEN"}
               onClick={() => void saveMilk()}
+              aria-disabled={!selectedSupplier || busy || data.shift.status !== "OPEN"}
               aria-label={
                 selectedSupplier ? `تسجيل كمية ${selectedSupplier.displayName}` : "المورد المختار"
               }
@@ -567,8 +598,7 @@ export function PosWorkspace({
                 borderRadius: 1.25,
                 color: "text.primary",
                 backgroundColor: "transparent",
-                cursor: selectedSupplier && !busy ? "pointer" : "default",
-                "&:disabled": { color: "text.primary", opacity: 1 },
+                cursor: "pointer",
               }}
             >
               <Typography

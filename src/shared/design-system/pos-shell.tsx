@@ -4,7 +4,6 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Container from "@mui/material/Container";
 import Typography from "@mui/material/Typography";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 function cairoClock() {
@@ -18,7 +17,6 @@ function cairoClock() {
 export function PosShell({ children }: { children: React.ReactNode }) {
   const [time, setTime] = useState("");
   const [hasLeftFullscreen, setHasLeftFullscreen] = useState(false);
-  const router = useRouter();
 
   useEffect(() => {
     const update = () => setTime(cairoClock());
@@ -37,10 +35,9 @@ export function PosShell({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener("fullscreenchange", updateFullscreenState);
   }, []);
 
-  async function leaveSession() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.replace("/login");
-    router.refresh();
+  function leaveShiftWorkspace() {
+    window.dispatchEvent(new Event("dairy-pos-leave-shift"));
+    setHasLeftFullscreen(false);
   }
 
   return (
@@ -49,10 +46,10 @@ export function PosShell({ children }: { children: React.ReactNode }) {
         <Button
           type="button"
           size="small"
-          onClick={leaveSession}
+          onClick={leaveShiftWorkspace}
           sx={{ position: "fixed", top: 6, left: 8, zIndex: 1, minHeight: 44 }}
         >
-          خروج
+          مغادرة الوردية
         </Button>
       )}
       <Typography
