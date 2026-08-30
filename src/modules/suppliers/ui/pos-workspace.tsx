@@ -71,7 +71,7 @@ const vintageNameButtonSx = {
 const vintageHeaderActionSx = {
   position: "absolute",
   top: 0,
-  width: "clamp(64px, min(8vw, 16dvh), 132px)",
+  width: 88,
   minWidth: 0,
   height: "100%",
   minHeight: 0,
@@ -83,13 +83,9 @@ const vintageHeaderActionSx = {
   "&:hover": { backgroundColor: "#f8eedc", boxShadow: "1px 1px 0 #dac19b" },
 };
 
-const viewportHeaderHeight = "clamp(78px, min(10vw, 12dvh), 120px)";
-const viewportHeaderNameSize = "clamp(1.7rem, min(4.4vw, 6dvh), 4rem)";
-const viewportHeaderIconSize = "clamp(2rem, min(3vw, 6dvh), 3rem)";
-const viewportCounterGap = "clamp(12px, 2.5dvh, 32px)";
-const viewportCounterSize = "clamp(44px, 5dvh, 64px)";
-const weighingControlSize = "min(29vw, 350px, calc(100dvh - 230px))";
-const cashControlSize = "min(29vw, 300px, calc((100dvh - 300px) / 2))";
+const staticHeaderNameSize = "3rem";
+const staticHeaderIconSize = "2.5rem";
+const staticCounterSize = 52;
 
 function requestId() {
   return crypto.randomUUID();
@@ -616,7 +612,8 @@ export function PosWorkspace({
               sx={{
                 display: "block",
                 width: "100%",
-                minHeight: viewportHeaderHeight,
+                height: 108,
+                minHeight: 0,
                 border: "2px solid",
                 borderColor: editingEntry
                   ? "#a85420"
@@ -635,11 +632,14 @@ export function PosWorkspace({
                 align="center"
                 sx={{
                   display: "block",
-                  px: { xs: 11, sm: 14 },
+                  px: 12,
                   py: 1,
-                  fontSize: viewportHeaderNameSize,
+                  fontSize: staticHeaderNameSize,
                   fontWeight: 800,
                   lineHeight: 1.1,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
                 }}
               >
                 {selectedSupplier?.displayName ?? (prefix.length ? prefix.join(" ") : " ")}
@@ -652,7 +652,7 @@ export function PosWorkspace({
                 onClick={finishSupplier}
                 sx={{ ...vintageHeaderActionSx, left: 0 }}
               >
-                <ReplayOutlinedIcon sx={{ fontSize: viewportHeaderIconSize }} />
+                <ReplayOutlinedIcon sx={{ fontSize: staticHeaderIconSize }} />
               </Button>
             )}
             {!selectedSupplier && prefix.length > 0 && (
@@ -662,7 +662,7 @@ export function PosWorkspace({
                 onClick={() => setPrefix([])}
                 sx={{ ...vintageHeaderActionSx, left: 0 }}
               >
-                <ReplayOutlinedIcon sx={{ fontSize: viewportHeaderIconSize }} />
+                <ReplayOutlinedIcon sx={{ fontSize: staticHeaderIconSize }} />
               </Button>
             )}
             <Button
@@ -671,7 +671,7 @@ export function PosWorkspace({
               onClick={() => setHistoryScope(selectedSupplier ? "supplier" : "shift")}
               sx={{ ...vintageHeaderActionSx, right: 0 }}
             >
-              <HistoryOutlinedIcon sx={{ fontSize: viewportHeaderIconSize }} />
+              <HistoryOutlinedIcon sx={{ fontSize: staticHeaderIconSize }} />
             </Button>
           </Box>
 
@@ -731,7 +731,7 @@ export function PosWorkspace({
                 flexGrow: 1,
                 minHeight: 0,
                 justifyContent: "center",
-                pb: "clamp(24px, 8dvh, 64px)",
+                pb: 8,
               }}
             >
               {selectedSupplier.posInstruction && (
@@ -815,7 +815,8 @@ export function PosWorkspace({
                 sx={{
                   display: "block",
                   width: "100%",
-                  minHeight: "clamp(88px, min(12vw, 16dvh), 132px)",
+                  height: 132,
+                  minHeight: 0,
                   border: "2px solid",
                   borderColor: "primary.main",
                   borderRadius: 1.25,
@@ -830,11 +831,14 @@ export function PosWorkspace({
                   align="center"
                   sx={{
                     display: "block",
-                    px: { xs: 11, sm: 14 },
+                    px: 12,
                     pt: 1,
-                    fontSize: viewportHeaderNameSize,
+                    fontSize: staticHeaderNameSize,
                     fontWeight: 800,
                     lineHeight: 1.1,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
                   }}
                 >
                   {selectedSupplier?.displayName}
@@ -850,7 +854,7 @@ export function PosWorkspace({
                   sx={{
                     display: "block",
                     pb: 1,
-                    fontSize: "clamp(1.15rem, 2.5dvh, 2rem)",
+                    fontSize: "1.4rem",
                     fontWeight: 900,
                   }}
                 >
@@ -867,7 +871,7 @@ export function PosWorkspace({
                 }}
                 sx={{ ...vintageHeaderActionSx, left: 0 }}
               >
-                <ReplayOutlinedIcon sx={{ fontSize: viewportHeaderIconSize }} />
+                <ReplayOutlinedIcon sx={{ fontSize: staticHeaderIconSize }} />
               </Button>
               <Typography
                 component="time"
@@ -882,54 +886,58 @@ export function PosWorkspace({
                 <Typography align="center">{selectedSupplier.posInstruction}</Typography>
               </Paper>
             )}
-            <Stack
-              sx={{
-                flexGrow: 1,
-                minHeight: 0,
-                justifyContent: "center",
-                pb: "clamp(16px, 5dvh, 40px)",
-              }}
-            >
+            <Stack sx={{ flexGrow: 1, minHeight: 0, pb: 2 }}>
               <Grid
                 container
-                spacing={{ xs: 1, sm: 1.5 }}
-                sx={{ width: "min(100%, 960px)", mx: "auto" }}
+                spacing={1.5}
+                sx={{
+                  width: "100%",
+                  maxWidth: 960,
+                  height: "100%",
+                  minHeight: 0,
+                  mx: "auto",
+                  gridAutoRows: "minmax(0, 1fr)",
+                }}
               >
                 {cashAmounts.map((amount) => (
-                  <Grid
-                    key={amount}
-                    size={{ xs: 4 }}
-                    sx={{ display: "flex", justifyContent: "center" }}
-                  >
+                  <Grid key={amount} size={{ xs: 4 }} sx={{ display: "flex", minHeight: 0 }}>
                     <Stack
-                      spacing={0.5}
-                      sx={{
-                        width: cashControlSize,
-                        flex: "0 1 auto",
-                        alignItems: "center",
-                      }}
+                      sx={{ width: "100%", height: "100%", minHeight: 0, alignItems: "center" }}
                     >
-                      <Button
-                        type="button"
-                        variant="outlined"
-                        disabled={busy}
-                        onClick={() =>
-                          setCashCounts((counts) => ({ ...counts, [amount]: counts[amount] + 1 }))
-                        }
+                      <Box
                         sx={{
+                          flexGrow: 1,
+                          minHeight: 0,
                           width: "100%",
-                          maxWidth: "100%",
-                          minWidth: 0,
-                          aspectRatio: "1",
-                          borderRadius: "50%",
-                          fontSize: "clamp(1.25rem, 2.5vw, 2.2rem)",
-                          fontWeight: 800,
-                          borderWidth: 3,
-                          borderColor: "text.primary",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
                         }}
                       >
-                        {amount}
-                      </Button>
+                        <Button
+                          type="button"
+                          variant="outlined"
+                          disabled={busy}
+                          onClick={() =>
+                            setCashCounts((counts) => ({ ...counts, [amount]: counts[amount] + 1 }))
+                          }
+                          sx={{
+                            width: "auto",
+                            height: "100%",
+                            maxWidth: "100%",
+                            maxHeight: 300,
+                            minWidth: 0,
+                            aspectRatio: "1",
+                            borderRadius: "50%",
+                            fontSize: "2rem",
+                            fontWeight: 800,
+                            borderWidth: 3,
+                            borderColor: "text.primary",
+                          }}
+                        >
+                          {amount}
+                        </Button>
+                      </Box>
                       <Button
                         type="button"
                         variant="text"
@@ -942,10 +950,10 @@ export function PosWorkspace({
                         }
                         aria-label={`إنقاص عدد فئة ${amount} جنيه`}
                         sx={{
-                          mt: viewportCounterGap,
-                          minHeight: viewportCounterSize,
-                          minWidth: viewportCounterSize,
-                          fontSize: "clamp(1.65rem, min(3vw, 5dvh), 2.6rem)",
+                          mt: 1,
+                          minHeight: staticCounterSize,
+                          minWidth: staticCounterSize,
+                          fontSize: "2.25rem",
                           fontWeight: 800,
                           color: "text.primary",
                         }}
@@ -1089,45 +1097,60 @@ function TapQuantity({
       aria-label="الكمية"
       sx={{
         width: "100%",
-        justifyContent: "center",
-        alignItems: "flex-start",
-        pt: "clamp(8px, 2.5dvh, 24px)",
+        flexGrow: 1,
+        minHeight: 0,
+        alignItems: "stretch",
+        pt: 1,
       }}
     >
       {rows.map((row) => (
         <Stack
           key={row.label}
-          sx={{ width: weighingControlSize, flex: "0 1 auto", alignItems: "center" }}
+          sx={{ flex: "1 1 0", minWidth: 0, minHeight: 0, alignItems: "center" }}
         >
-          <Button
-            type="button"
-            variant="outlined"
-            onClick={row.onAdd}
-            aria-label={`إضافة ${row.label}`}
+          <Box
             sx={{
+              flexGrow: 1,
+              minHeight: 0,
               width: "100%",
-              minWidth: 0,
-              aspectRatio: "1",
-              fontSize: "clamp(1.1rem, min(2.5vw, 4dvh), 2.2rem)",
-              fontWeight: 800,
-              borderWidth: 3,
-              borderColor: editing ? "#a85420" : "text.primary",
-              borderRadius: 1.25,
-              backgroundColor: editing ? "#fff0df" : "transparent",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            {row.label}
-          </Button>
+            <Button
+              type="button"
+              variant="outlined"
+              onClick={row.onAdd}
+              aria-label={`إضافة ${row.label}`}
+              sx={{
+                width: "auto",
+                height: "100%",
+                maxWidth: "100%",
+                maxHeight: 350,
+                minWidth: 0,
+                aspectRatio: "1",
+                fontSize: "1.8rem",
+                fontWeight: 800,
+                borderWidth: 3,
+                borderColor: editing ? "#a85420" : "text.primary",
+                borderRadius: 1.25,
+                backgroundColor: editing ? "#fff0df" : "transparent",
+              }}
+            >
+              {row.label}
+            </Button>
+          </Box>
           <Button
             type="button"
             variant="text"
             onClick={row.onRemove}
             aria-label={`إنقاص ${row.label}`}
             sx={{
-              mt: viewportCounterGap,
-              minHeight: viewportCounterSize,
-              minWidth: viewportCounterSize,
-              fontSize: "clamp(1.65rem, min(3vw, 5dvh), 2.6rem)",
+              mt: 1,
+              minHeight: staticCounterSize,
+              minWidth: staticCounterSize,
+              fontSize: "2.25rem",
               fontWeight: 800,
               color: editing ? "#a85420" : "text.primary",
             }}
