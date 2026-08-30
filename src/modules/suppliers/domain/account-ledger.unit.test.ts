@@ -8,6 +8,7 @@ import {
 const movement = (type: SupplierAccountMovement["type"]): SupplierAccountMovement => ({
   id: type,
   supplierId: "supplier-id",
+  milkType: "COW",
   type,
   amountPiasters: 700,
   businessDate: "2026-08-29",

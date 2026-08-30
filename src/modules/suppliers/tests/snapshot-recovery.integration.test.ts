@@ -49,6 +49,7 @@ describeMongo("supplier close snapshot recovery", () => {
         {
           id: cashId,
           supplierId: supplier.id,
+          milkType: "COW" as const,
           amountPiasters: 1_250,
           note: "دفع نقدي",
           createdAt: timestamp,
@@ -76,6 +77,7 @@ describeMongo("supplier close snapshot recovery", () => {
       {
         id: cashId,
         supplierId: supplier.id,
+        milkType: "COW",
         amountPiasters: 1_250,
         ownerReviewStatus: "PENDING",
       },

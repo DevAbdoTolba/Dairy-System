@@ -49,6 +49,7 @@ type PosCloseWorkspace = {
   cashRecords: Array<{
     id: string;
     supplierId: string;
+    milkType: "COW" | "BUFFALO";
     amountPiasters?: number;
     note?: string;
     createdAt: string;
@@ -199,9 +200,10 @@ export async function createLocalShiftSnapshot(
         (record): record is typeof record & { amountPiasters: number } =>
           Number.isSafeInteger(record.amountPiasters) && (record.amountPiasters ?? 0) > 0,
       )
-      .map(({ id, supplierId, amountPiasters, note = "", createdAt }) => ({
+      .map(({ id, supplierId, milkType, amountPiasters, note = "", createdAt }) => ({
         id,
         supplierId,
+        milkType,
         amountPiasters,
         note,
         createdAt,

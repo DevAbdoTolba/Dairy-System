@@ -7,7 +7,7 @@ import {
 import { milkLineValuePiasters } from "../domain/money";
 import { priceForDelivery, type MilkPricePeriod } from "../domain/price";
 import { calculateSettlement, type SupplierSettlement } from "../domain/settlement";
-import type { MilkEntry } from "../domain/shift";
+import { milkTypes, type MilkEntry, type MilkType } from "../domain/shift";
 import {
   getLatestSupplierSettlement,
   getRepaymentInstruction,
@@ -26,6 +26,7 @@ import { withSupplierCommand } from "./command-service";
 
 const settlementPreviewSchema = z.object({
   supplierId: z.string().uuid(),
+  milkType: z.enum(milkTypes),
   cutoffDate: z.string().refine(isIsoDate, "التاريخ غير صحيح."),
 });
 const settlementConfirmSchema = settlementPreviewSchema.extend({
@@ -52,6 +53,7 @@ export class MissingMilkPriceError extends Error {
 
 type SettlementSource = {
   supplierId: string;
+  milkType: MilkType;
   cutoffDate: string;
   openingCarryPiasters: number;
   instruction: Awaited<ReturnType<typeof getRepaymentInstruction>>;
@@ -62,21 +64,24 @@ type SettlementSource = {
 
 async function settlementSource(
   supplierId: string,
+  milkType: MilkType,
   cutoffDate: string,
   session?: Parameters<Parameters<typeof withSupplierCommand>[5]>[0],
 ): Promise<SettlementSource> {
   const options = session ? { session } : {};
   const [supplier, entries, movements, prices, instruction, previous] = await Promise.all([
     getSupplier(supplierId, options),
-    listUnsettledMilkEntries(supplierId, cutoffDate, options),
-    listUnsettledAccountMovements(supplierId, cutoffDate, options),
+    listUnsettledMilkEntries(supplierId, milkType, cutoffDate, options),
+    listUnsettledAccountMovements(supplierId, milkType, cutoffDate, options),
     listMilkPrices(options),
-    getRepaymentInstruction(supplierId, options),
-    getLatestSupplierSettlement(supplierId, options),
+    getRepaymentInstruction(supplierId, milkType, options),
+    getLatestSupplierSettlement(supplierId, milkType, options),
   ]);
   if (!supplier) throw new Error("المورد غير موجود.");
+  if (!supplier.milkTypes.includes(milkType)) throw new Error("نوع اللبن غير مسجل لهذا المورد.");
   return {
     supplierId,
+    milkType,
     cutoffDate,
     openingCarryPiasters: previous?.closingCarryPiasters ?? 0,
     instruction,
@@ -131,6 +136,7 @@ function buildPreview(source: SettlementSource, paymentPiasters: number) {
   });
   return {
     supplierId: source.supplierId,
+    milkType: source.milkType,
     cutoffDate: source.cutoffDate,
     openingCarryPiasters: source.openingCarryPiasters,
     milkLines: milkLines.filter((line): line is NonNullable<typeof line> => Boolean(line)),
@@ -143,7 +149,7 @@ function buildPreview(source: SettlementSource, paymentPiasters: number) {
 
 export async function previewSupplierSettlement(rawInput: SettlementPreviewInput) {
   const input = settlementPreviewSchema.parse(rawInput);
-  const source = await settlementSource(input.supplierId, input.cutoffDate);
+  const source = await settlementSource(input.supplierId, input.milkType, input.cutoffDate);
   const preview = buildPreview(source, 0);
   return {
     ...preview,
@@ -161,7 +167,12 @@ export async function confirmSupplierSettlement(rawInput: SettlementConfirmInput
     input.settlementId,
     "OWNER",
     async (session) => {
-      const source = await settlementSource(input.supplierId, input.cutoffDate, session);
+      const source = await settlementSource(
+        input.supplierId,
+        input.milkType,
+        input.cutoffDate,
+        session,
+      );
       const preview = buildPreview(source, input.paymentPiasters);
       const linkedEntries = await linkMilkEntriesToSettlement(
         source.entries.map((entry) => entry.id),
@@ -181,6 +192,7 @@ export async function confirmSupplierSettlement(rawInput: SettlementConfirmInput
           {
             id: paymentMovementId,
             supplierId: input.supplierId,
+            milkType: input.milkType,
             type: "OWNER_CASH_OUT",
             amountPiasters: input.paymentPiasters,
             businessDate: input.cutoffDate,
@@ -214,6 +226,6 @@ export async function getSupplierSettlement(id: string) {
   return settlement;
 }
 
-export async function listSettlements(supplierId?: string) {
-  return listSupplierSettlements(supplierId);
+export async function listSettlements(supplierId?: string, milkType?: MilkType) {
+  return listSupplierSettlements(supplierId, milkType);
 }

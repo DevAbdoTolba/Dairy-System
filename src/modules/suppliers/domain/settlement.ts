@@ -42,6 +42,7 @@ export function calculateSettlement(input: SettlementCalculationInput) {
 export type SupplierSettlement = {
   id: string;
   supplierId: string;
+  milkType: "COW" | "BUFFALO";
   cutoffDate: string;
   openingCarryPiasters: number;
   milkLines: Array<{

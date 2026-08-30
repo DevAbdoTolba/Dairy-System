@@ -108,6 +108,8 @@ The ledger is authoritative; no manually editable balance is stored.
 
 A settlement snapshots selected unallocated milk lines, account movements, opening carry, prices, line values, payment, and closing carry. Its payment creates exactly one linked `OWNER_CASH_OUT` ledger movement in the same MongoDB transaction. `selectedDeductionPiasters` and hold-payment instructions are advisory inputs to the suggested payment only; they never post another hidden charge.
 
+Accounts, owner movements, repayment advice, POS cash, carries, and settlements are scoped to a supplier plus milk type. A supplier configured for both types has independent cow and buffalo accounts; the owner UI groups the two account cards directly beneath that supplier name.
+
 Settled milk/movement records receive settlement linkage metadata but their original business facts remain unchanged. Later price changes cannot alter a prior settlement snapshot.
 
 ### 4.5 Audit and idempotency
@@ -150,7 +152,7 @@ PIN rotation cannot revoke a verifier on a device that is completely offline and
 
 ### 4.8 Tablet POS layout
 
-The active collection screen is intentionally one-touch: suggestions disappear after a supplier is selected; tapping a quantity label adds one and tapping its number removes one, then tapping the supplier name saves the selected quantity. Six cup taps carry into one satl. Supplier milk eligibility is configured by the owner as cow, buffalo, or both; a both supplier chooses the milk type immediately after the name, while all account and settlement totals remain one combined supplier account. Cash deductions open into a separate denomination keypad with the same add/remove rule and save by tapping the supplier name. The opposite floating action button closes the shift immediately by saving/downloading its snapshot without another PIN prompt. If the browser exits full-screen during an open shift, a small logout control appears without restoring owner navigation.
+The active collection screen is intentionally one-touch: suggestions disappear after a supplier is selected; tapping a quantity label adds one and tapping its number removes one, then tapping the supplier name saves the selected quantity. Six cup taps carry into one satl. Supplier milk eligibility is configured by the owner as cow, buffalo, or both; a both supplier chooses the milk type immediately after the name and all milk/cash facts are recorded against that separate type account. Cash deductions open into a separate denomination keypad with the same add/remove rule and save by tapping the supplier name. The opposite floating action button closes the shift immediately by saving/downloading its snapshot without another PIN prompt. If the browser exits full-screen during an open shift, a small logout control appears without restoring owner navigation.
 
 At the target 1180 × 820 tablet viewport, routine milk entry must not require whole-page scrolling:
 
@@ -239,18 +241,18 @@ File names may be split when a file becomes hard to review, but boundaries and p
 
 ## 6. MongoDB model and required indexes
 
-| Collection                      | Purpose                                                              | Required indexes/invariants                                                                                    |
-| ------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `suppliers`                     | Names, normalized tokens, stable order, active flag, POS instruction | unique `_id`; stable `sortOrder`; index `active + sortOrder`                                                   |
-| `supplierShifts`                | Morning/night lifecycle and snapshot metadata                        | unique `businessDate + type`; index `status + businessDate`                                                    |
-| `supplierMilkEntries`           | Current milk fact with revision/soft-delete                          | unique `_id`; index `shiftId + createdAt`; index `supplierId + businessDate`; optional unique `idempotencyKey` |
-| `supplierMilkPrices`            | Cow/buffalo effective-date price periods                             | unique `milkType + effectiveFrom`; lookup index descending by effective date                                   |
-| `supplierAccountMovements`      | Cash, goods, and explicit principal movements                        | unique `_id`; index `supplierId + businessDate`; index `ownerReviewStatus + createdAt`; index `settlementId`   |
-| `supplierRepaymentInstructions` | Owner-only advisory deduction/hold/note                              | unique `supplierId`                                                                                            |
-| `supplierSettlements`           | Immutable calculation and receipt snapshot                           | unique `_id`; index `supplierId + createdAt`; unique payment movement link when present                        |
-| `supplierEvents`                | Immutable command receipt and audit trail                            | unique command `_id`; index `aggregateType + aggregateId + createdAt`                                          |
-| `appIntegrations`               | Encrypted Drive credential and owned folder IDs                      | unique integration `_id`; server-only access                                                                   |
-| `backupJobs`                    | Shift/weekly Drive upload state and retry details                    | unique `kind + artifactId`; index `status + nextAttemptAt`                                                     |
+| Collection                      | Purpose                                                              | Required indexes/invariants                                                                                               |
+| ------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `suppliers`                     | Names, normalized tokens, stable order, active flag, POS instruction | unique `_id`; stable `sortOrder`; index `active + sortOrder`                                                              |
+| `supplierShifts`                | Morning/night lifecycle and snapshot metadata                        | unique `businessDate + type`; index `status + businessDate`                                                               |
+| `supplierMilkEntries`           | Current milk fact with revision/soft-delete                          | unique `_id`; index `shiftId + createdAt`; index `supplierId + milkType + businessDate`; optional unique `idempotencyKey` |
+| `supplierMilkPrices`            | Cow/buffalo effective-date price periods                             | unique `milkType + effectiveFrom`; lookup index descending by effective date                                              |
+| `supplierAccountMovements`      | Cash, goods, and explicit principal movements                        | unique `_id`; index `supplierId + milkType + businessDate`; index `ownerReviewStatus + createdAt`; index `settlementId`   |
+| `supplierRepaymentInstructions` | Owner-only advisory deduction/hold/note                              | unique `supplierId + milkType`                                                                                            |
+| `supplierSettlements`           | Immutable calculation and receipt snapshot                           | unique `_id`; index `supplierId + milkType + createdAt`; unique payment movement link when present                        |
+| `supplierEvents`                | Immutable command receipt and audit trail                            | unique command `_id`; index `aggregateType + aggregateId + createdAt`                                                     |
+| `appIntegrations`               | Encrypted Drive credential and owned folder IDs                      | unique integration `_id`; server-only access                                                                              |
+| `backupJobs`                    | Shift/weekly Drive upload state and retry details                    | unique `kind + artifactId`; index `status + nextAttemptAt`                                                                |
 
 Supplier documents use UUID strings as `_id` to match the current repository style. Every business date is `YYYY-MM-DD` in `Africa/Cairo`; technical timestamps are UTC ISO strings.
 

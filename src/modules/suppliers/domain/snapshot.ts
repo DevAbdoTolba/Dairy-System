@@ -33,6 +33,7 @@ export type ShiftCloseSnapshotPayload = {
   cashRecords?: Array<{
     id: string;
     supplierId: string;
+    milkType: "COW" | "BUFFALO";
     amountPiasters: number;
     note: string;
     createdAt: string;

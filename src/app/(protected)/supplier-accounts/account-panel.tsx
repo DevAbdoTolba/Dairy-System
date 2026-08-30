@@ -15,9 +15,12 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { formatPiasters } from "@/modules/suppliers/domain/money";
 import type { Supplier, SupplierAccountMovement } from "@/modules/suppliers";
+import type { MilkType } from "@/modules/suppliers/domain/shift";
 
 type AccountSummary = {
+  id: string;
   supplier: Supplier;
+  milkType: MilkType;
   balancePiasters: number;
   unpricedMilkLines: number;
   pendingReviewCount: number;
@@ -25,6 +28,7 @@ type AccountSummary = {
 
 type AccountDetail = {
   supplier: Supplier;
+  milkType: MilkType;
   movements: SupplierAccountMovement[];
   balancePiasters: number;
   pricedMilkPiasters: number;
@@ -35,6 +39,8 @@ type AccountDetail = {
     note: string | null;
   } | null;
 };
+
+const milkLabels: Record<MilkType, string> = { COW: "لبن بقري", BUFFALO: "لبن جاموسي" };
 
 function piasters(value: string, allowZero = false) {
   const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(value.trim().replace("٫", "."));
@@ -59,7 +65,7 @@ export function AccountPanel({
   pendingCash: SupplierAccountMovement[];
 }) {
   const router = useRouter();
-  const [selectedId, setSelectedId] = useState(accounts[0]?.supplier.id ?? "");
+  const [selectedId, setSelectedId] = useState(accounts[0]?.id ?? "");
   const [detail, setDetail] = useState<AccountDetail | null>(null);
   const [amountEgp, setAmountEgp] = useState("");
   const [movementType, setMovementType] = useState<
@@ -72,18 +78,31 @@ export function AccountPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const selected = useMemo(
-    () => accounts.find((account) => account.supplier.id === selectedId)?.supplier,
+    () => accounts.find((account) => account.id === selectedId),
     [accounts, selectedId],
   );
+  const groupedAccounts = useMemo(() => {
+    const groups = new Map<string, { supplier: Supplier; accounts: AccountSummary[] }>();
+    for (const account of accounts) {
+      const group = groups.get(account.supplier.id);
+      if (group) group.accounts.push(account);
+      else groups.set(account.supplier.id, { supplier: account.supplier, accounts: [account] });
+    }
+    return [...groups.values()];
+  }, [accounts]);
 
   async function payload(response: Response) {
     return (await response.json()) as { error?: string };
   }
 
-  async function loadAccount(id: string) {
-    setSelectedId(id);
+  async function loadAccount(account: AccountSummary) {
+    setSelectedId(account.id);
     setError(null);
-    const response = await fetch(`/api/supplier-accounts/${id}`, { cache: "no-store" });
+    setDetail(null);
+    const response = await fetch(
+      `/api/supplier-accounts/${account.supplier.id}?milkType=${account.milkType}`,
+      { cache: "no-store" },
+    );
     const result = (await response.json()) as AccountDetail & { error?: string };
     if (!response.ok) return setError(result.error ?? "تعذر تحميل الحساب.");
     setDetail(result);
@@ -105,7 +124,7 @@ export function AccountPanel({
     setBusy(false);
     if (!response.ok) return setError(result.error ?? "تعذر اعتماد الحركة.");
     router.refresh();
-    if (selectedId) void loadAccount(selectedId);
+    if (selected) void loadAccount(selected);
   }
 
   async function addMovement(event: React.FormEvent<HTMLFormElement>) {
@@ -121,7 +140,8 @@ export function AccountPanel({
       body: JSON.stringify({
         commandId: crypto.randomUUID(),
         movementId: crypto.randomUUID(),
-        supplierId: selected.id,
+        supplierId: selected.supplier.id,
+        milkType: selected.milkType,
         type: movementType,
         amountPiasters,
         businessDate,
@@ -134,7 +154,7 @@ export function AccountPanel({
     setAmountEgp("");
     setNote("");
     router.refresh();
-    void loadAccount(selected.id);
+    void loadAccount(selected);
   }
 
   async function saveInstruction(event: React.FormEvent<HTMLFormElement>) {
@@ -148,7 +168,8 @@ export function AccountPanel({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         commandId: crypto.randomUUID(),
-        supplierId: selected.id,
+        supplierId: selected.supplier.id,
+        milkType: selected.milkType,
         suggestedDeductionPiasters,
         holdPaymentUntil: holdPaymentUntil || null,
         note,
@@ -158,7 +179,7 @@ export function AccountPanel({
     setBusy(false);
     if (!response.ok) return setError(result.error ?? "تعذر حفظ التعليمات.");
     router.refresh();
-    void loadAccount(selected.id);
+    void loadAccount(selected);
   }
 
   return (
@@ -181,9 +202,12 @@ export function AccountPanel({
             {pendingCash.map((movement) => (
               <Stack key={movement.id} direction={{ xs: "column", sm: "row" }} spacing={1}>
                 <Typography sx={{ flexGrow: 1 }}>
-                  {accounts.find((account) => account.supplier.id === movement.supplierId)?.supplier
-                    .displayName ?? "مورد"}{" "}
-                  · {formatPiasters(movement.amountPiasters)}
+                  {accounts.find(
+                    (account) =>
+                      account.supplier.id === movement.supplierId &&
+                      account.milkType === movement.milkType,
+                  )?.supplier.displayName ?? "مورد"}{" "}
+                  · {milkLabels[movement.milkType]} · {formatPiasters(movement.amountPiasters)}
                 </Typography>
                 <Button type="button" disabled={busy} onClick={() => review(movement.id)}>
                   اعتماد
@@ -198,17 +222,30 @@ export function AccountPanel({
       </Card>
       <Stack direction={{ xs: "column", lg: "row" }} spacing={2}>
         <Stack spacing={1} sx={{ minWidth: { lg: 320 }, flex: 1 }}>
-          {accounts.map((account) => (
-            <Button
-              key={account.supplier.id}
-              type="button"
-              variant={selectedId === account.supplier.id ? "contained" : "outlined"}
-              onClick={() => void loadAccount(account.supplier.id)}
-              sx={{ justifyContent: "space-between", minHeight: 58 }}
+          {groupedAccounts.map((group) => (
+            <Stack
+              key={group.supplier.id}
+              spacing={0.5}
+              sx={{ p: 1, border: 1, borderColor: "divider", borderRadius: 1 }}
             >
-              <span>{account.supplier.displayName}</span>
-              <span>{formatPiasters(account.balancePiasters)}</span>
-            </Button>
+              <Typography sx={{ px: 0.5, fontWeight: 800 }}>
+                {group.supplier.displayName}
+              </Typography>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={0.5}>
+                {group.accounts.map((account) => (
+                  <Button
+                    key={account.id}
+                    type="button"
+                    variant={selectedId === account.id ? "contained" : "outlined"}
+                    onClick={() => void loadAccount(account)}
+                    sx={{ flex: 1, justifyContent: "space-between", minHeight: 52 }}
+                  >
+                    <span>{milkLabels[account.milkType]}</span>
+                    <span>{formatPiasters(account.balancePiasters)}</span>
+                  </Button>
+                ))}
+              </Stack>
+            </Stack>
           ))}
         </Stack>
         <Stack spacing={2} sx={{ flex: 2 }}>
@@ -217,13 +254,13 @@ export function AccountPanel({
               <CardContent>
                 <Stack spacing={2}>
                   <Typography component="h2" variant="h2">
-                    {selected.displayName}
+                    {selected.supplier.displayName} · {milkLabels[selected.milkType]}
                   </Typography>
                   {!detail && (
                     <Button
                       type="button"
                       variant="outlined"
-                      onClick={() => void loadAccount(selected.id)}
+                      onClick={() => void loadAccount(selected)}
                     >
                       تحميل تفاصيل الحساب
                     </Button>

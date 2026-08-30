@@ -157,6 +157,7 @@ describeMongo("supplier milk ledger", () => {
         commandId,
         movementId: crypto.randomUUID(),
         supplierId: supplier.id,
+        milkType: "COW",
         amountPiasters: 700,
       },
       "POS",
@@ -167,6 +168,7 @@ describeMongo("supplier milk ledger", () => {
         commandId,
         movementId: crypto.randomUUID(),
         supplierId: supplier.id,
+        milkType: "COW",
         amountPiasters: 700,
       },
       "POS",
@@ -174,16 +176,116 @@ describeMongo("supplier milk ledger", () => {
     await setRepaymentInstruction({
       commandId: crypto.randomUUID(),
       supplierId: supplier.id,
+      milkType: "COW",
       suggestedDeductionPiasters: 500,
       holdPaymentUntil: null,
     });
-    const account = await getSupplierAccount(supplier.id);
+    const account = await getSupplierAccount(supplier.id, "COW");
 
     expect(cash.movement.ownerReviewStatus).toBe("PENDING");
     expect(duplicate).toMatchObject({ duplicate: true, movement: { id: cash.movement.id } });
     expect(account.pricedMilkPiasters).toBe(1_000);
     expect(account.balancePiasters).toBe(300);
     expect(account.instruction?.suggestedDeductionPiasters).toBe(500);
+  });
+
+  it("keeps cow and buffalo money in separate accounts for one supplier", async () => {
+    const { createSupplier } = await import("../application/supplier-service");
+    const { addMilkEntry, openSupplierShift } = await import("../application/shift-service");
+    const { getSupplierAccount, listSupplierAccountSummaries, recordShiftCash, setMilkPrice } =
+      await import("../application/account-service");
+    const supplier = await createSupplier({
+      displayName: "زينب علي",
+      milkTypes: ["COW", "BUFFALO"],
+    });
+    const shift = await openSupplierShift(
+      {
+        commandId: crypto.randomUUID(),
+        shiftId: crypto.randomUUID(),
+        businessDate: "2026-08-29",
+        type: "MORNING",
+      },
+      "POS",
+    );
+    await Promise.all([
+      setMilkPrice({
+        commandId: crypto.randomUUID(),
+        milkType: "COW",
+        effectiveFrom: "2026-08-01",
+        pricePiastersPerSatl: 1_000,
+      }),
+      setMilkPrice({
+        commandId: crypto.randomUUID(),
+        milkType: "BUFFALO",
+        effectiveFrom: "2026-08-01",
+        pricePiastersPerSatl: 2_000,
+      }),
+    ]);
+    await Promise.all([
+      addMilkEntry(
+        shift.shift.id,
+        {
+          commandId: crypto.randomUUID(),
+          entryId: crypto.randomUUID(),
+          supplierId: supplier.id,
+          milkType: "COW",
+          quantityQuarterCupUnits: 24,
+        },
+        "POS",
+      ),
+      addMilkEntry(
+        shift.shift.id,
+        {
+          commandId: crypto.randomUUID(),
+          entryId: crypto.randomUUID(),
+          supplierId: supplier.id,
+          milkType: "BUFFALO",
+          quantityQuarterCupUnits: 24,
+        },
+        "POS",
+      ),
+    ]);
+    await Promise.all([
+      recordShiftCash(
+        shift.shift.id,
+        {
+          commandId: crypto.randomUUID(),
+          movementId: crypto.randomUUID(),
+          supplierId: supplier.id,
+          milkType: "COW",
+          amountPiasters: 200,
+        },
+        "POS",
+      ),
+      recordShiftCash(
+        shift.shift.id,
+        {
+          commandId: crypto.randomUUID(),
+          movementId: crypto.randomUUID(),
+          supplierId: supplier.id,
+          milkType: "BUFFALO",
+          amountPiasters: 500,
+        },
+        "POS",
+      ),
+    ]);
+
+    const [cow, buffalo, summaries] = await Promise.all([
+      getSupplierAccount(supplier.id, "COW"),
+      getSupplierAccount(supplier.id, "BUFFALO"),
+      listSupplierAccountSummaries(),
+    ]);
+
+    expect(cow).toMatchObject({ milkType: "COW", pricedMilkPiasters: 1_000, balancePiasters: 800 });
+    expect(buffalo).toMatchObject({
+      milkType: "BUFFALO",
+      pricedMilkPiasters: 2_000,
+      balancePiasters: 1_500,
+    });
+    expect(summaries.filter((account) => account.supplier.id === supplier.id)).toMatchObject([
+      { milkType: "COW", balancePiasters: 800 },
+      { milkType: "BUFFALO", balancePiasters: 1_500 },
+    ]);
   });
 
   it("freezes a settlement and creates exactly one linked payment movement", async () => {
@@ -224,6 +326,7 @@ describeMongo("supplier milk ledger", () => {
       commandId,
       settlementId: crypto.randomUUID(),
       supplierId: supplier.id,
+      milkType: "BUFFALO",
       cutoffDate: "2026-08-29",
       paymentPiasters: 400,
     });
@@ -231,6 +334,7 @@ describeMongo("supplier milk ledger", () => {
       commandId,
       settlementId: crypto.randomUUID(),
       supplierId: supplier.id,
+      milkType: "BUFFALO",
       cutoffDate: "2026-08-29",
       paymentPiasters: 400,
     });

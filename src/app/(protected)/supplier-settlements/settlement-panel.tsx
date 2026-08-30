@@ -12,14 +12,17 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { formatPiasters } from "@/modules/suppliers/domain/money";
 import type { Supplier, SupplierSettlement } from "@/modules/suppliers";
+import type { MilkType } from "@/modules/suppliers/domain/shift";
 
 type SettlementPreview = Omit<SupplierSettlement, "id" | "createdAt" | "paymentMovementId"> & {
   entryIds: string[];
   movementIds: string[];
 };
+
+const milkLabels: Record<MilkType, string> = { COW: "لبن بقري", BUFFALO: "لبن جاموسي" };
 
 function piasters(value: string) {
   const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(value.trim().replace("٫", "."));
@@ -37,11 +40,16 @@ export function SettlementPanel({
 }) {
   const router = useRouter();
   const [supplierId, setSupplierId] = useState(suppliers[0]?.id ?? "");
+  const [milkType, setMilkType] = useState<MilkType | "">(suppliers[0]?.milkTypes[0] ?? "");
   const [cutoffDate, setCutoffDate] = useState("");
   const [preview, setPreview] = useState<SettlementPreview | null>(null);
   const [paymentEgp, setPaymentEgp] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const selectedSupplier = useMemo(
+    () => suppliers.find((supplier) => supplier.id === supplierId),
+    [supplierId, suppliers],
+  );
 
   async function responsePayload(response: Response) {
     return (await response.json()) as { error?: string; preview?: SettlementPreview };
@@ -54,7 +62,7 @@ export function SettlementPanel({
     const response = await fetch("/api/supplier-settlements/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ supplierId, cutoffDate }),
+      body: JSON.stringify({ supplierId, milkType, cutoffDate }),
     });
     const result = await responsePayload(response);
     setBusy(false);
@@ -78,6 +86,7 @@ export function SettlementPanel({
         commandId: crypto.randomUUID(),
         settlementId: crypto.randomUUID(),
         supplierId: preview.supplierId,
+        milkType: preview.milkType,
         cutoffDate: preview.cutoffDate,
         paymentPiasters,
       }),
@@ -113,13 +122,37 @@ export function SettlementPanel({
                 select
                 label="المورد"
                 value={supplierId}
-                onChange={(event) => setSupplierId(event.target.value)}
+                onChange={(event) => {
+                  const nextSupplier = suppliers.find(
+                    (supplier) => supplier.id === event.target.value,
+                  );
+                  setSupplierId(event.target.value);
+                  setMilkType(nextSupplier?.milkTypes[0] ?? "");
+                  setPreview(null);
+                }}
                 required
                 sx={{ minWidth: 260 }}
               >
                 {suppliers.map((supplier) => (
                   <MenuItem key={supplier.id} value={supplier.id}>
                     {supplier.displayName}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select
+                label="نوع اللبن"
+                value={milkType}
+                onChange={(event) => {
+                  setMilkType(event.target.value as MilkType);
+                  setPreview(null);
+                }}
+                required
+                disabled={!selectedSupplier}
+              >
+                {(selectedSupplier?.milkTypes ?? []).map((type) => (
+                  <MenuItem key={type} value={type}>
+                    {milkLabels[type]}
                   </MenuItem>
                 ))}
               </TextField>
@@ -134,7 +167,7 @@ export function SettlementPanel({
               <Button
                 type="submit"
                 variant="contained"
-                disabled={busy || !supplierId || !cutoffDate}
+                disabled={busy || !supplierId || !milkType || !cutoffDate}
               >
                 عرض المعاينة
               </Button>
@@ -149,6 +182,7 @@ export function SettlementPanel({
               <Typography component="h2" variant="h2">
                 معاينة غير معتمدة
               </Typography>
+              <Typography color="text.secondary">{milkLabels[preview.milkType]}</Typography>
               <Typography>رصيد افتتاحي: {formatPiasters(preview.openingCarryPiasters)}</Typography>
               <Typography>
                 لبن: {formatPiasters(preview.milkTotalPiasters)} ({preview.milkLines.length} حركة)
@@ -202,7 +236,7 @@ export function SettlementPanel({
                 sx={{ alignItems: { sm: "center" } }}
               >
                 <Typography sx={{ flexGrow: 1 }}>
-                  {settlement.cutoffDate} · رصيد مرحل{" "}
+                  {settlement.cutoffDate} · {milkLabels[settlement.milkType]} · رصيد مرحل{" "}
                   {formatPiasters(settlement.closingCarryPiasters)}
                 </Typography>
                 <Button

@@ -393,7 +393,14 @@ export function PosWorkspace({
   }
 
   async function saveCash() {
-    if (!data || !selectedSupplier || data.shift.status !== "OPEN" || cashPiasters <= 0) return;
+    if (
+      !data ||
+      !selectedSupplier ||
+      !milkType ||
+      data.shift.status !== "OPEN" ||
+      cashPiasters <= 0
+    )
+      return;
     setBusy(true);
     setError(null);
     try {
@@ -402,6 +409,7 @@ export function PosWorkspace({
         id: movementId,
         supplierId: selectedSupplier.id,
         supplierName: selectedSupplier.displayName,
+        milkType,
         amountPiasters: cashPiasters,
         note: "",
         createdAt: new Date().toISOString(),
@@ -418,6 +426,7 @@ export function PosWorkspace({
           commandId: requestId(),
           movementId,
           supplierId: selectedSupplier.id,
+          milkType,
           amountPiasters: cashPiasters,
         },
       });
@@ -678,7 +687,7 @@ export function PosWorkspace({
       <Fab
         color="secondary"
         aria-label="خصم نقد للمورد"
-        disabled={!selectedSupplier || busy || data.shift.status !== "OPEN"}
+        disabled={!selectedSupplier || !milkType || busy || data.shift.status !== "OPEN"}
         onClick={() => setCashOpen(true)}
         sx={{ position: "fixed", bottom: 22, right: 22 }}
       >
@@ -701,7 +710,7 @@ export function PosWorkspace({
               <Box
                 component="button"
                 type="button"
-                disabled={busy || cashPiasters <= 0}
+                disabled={busy || !milkType || cashPiasters <= 0}
                 onClick={saveCash}
                 aria-label="حفظ خصم النقد"
                 sx={{
@@ -711,13 +720,18 @@ export function PosWorkspace({
                   borderColor: "text.primary",
                   borderRadius: 1,
                   backgroundColor: "transparent",
-                  cursor: cashPiasters > 0 ? "pointer" : "default",
+                  cursor: milkType && cashPiasters > 0 ? "pointer" : "default",
                   "&:disabled": { color: "text.primary", opacity: 1 },
                 }}
               >
                 <Typography component="h2" variant="h2" align="center">
                   {selectedSupplier?.displayName}
                 </Typography>
+                {milkType && (
+                  <Typography align="center" variant="body2" sx={{ pb: 0.75 }}>
+                    {milkLabels[milkType]}
+                  </Typography>
+                )}
               </Box>
               <Typography component="time" aria-label="الوقت الحالي" sx={{ fontWeight: 800 }}>
                 {cairoClock()}
@@ -852,7 +866,7 @@ export function PosWorkspace({
                   key={movement.id}
                   sx={{ p: 1, border: "1px solid", borderColor: "divider", borderRadius: 1.5 }}
                 >
-                  {movement.supplierName} · خصم نقد
+                  {movement.supplierName} · {milkLabels[movement.milkType]} · خصم نقد
                 </Typography>
               ))}
           </Stack>

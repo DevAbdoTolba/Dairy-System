@@ -2,8 +2,8 @@
 
 A settlement is a receipt snapshot, not a recalculation of a mutable balance.
 
-1. The owner selects a supplier and cutoff business date.
-2. Preview loads every unallocated milk delivery and ledger movement through that date. Each milk line resolves its historical cow/buffalo price; a missing price prevents confirmation and names the uncovered date/type.
+1. The owner selects a supplier, milk type, and cutoff business date.
+2. Preview loads unallocated deliveries and ledger movements for that supplier's selected milk type through that date. Each milk line resolves its historical price; a missing price prevents confirmation and names the uncovered date/type.
 3. Repayment advice may suggest a payment or hold it at zero. Advice never posts a deduction.
 4. On confirmation, one MongoDB transaction re-reads and claims every displayed source fact, saves the frozen lines/totals/carry, and creates one linked `OWNER_CASH_OUT` movement only when an actual payment is entered.
 

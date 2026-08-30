@@ -64,7 +64,7 @@ async function prepareDatabase() {
     db.collection<StoredDocument>("supplierMilkEntries").createIndex({ shiftId: 1, createdAt: 1 }),
     db
       .collection<StoredDocument>("supplierMilkEntries")
-      .createIndex({ supplierId: 1, businessDate: -1 }),
+      .createIndex({ supplierId: 1, milkType: 1, businessDate: -1 }),
     db
       .collection<StoredDocument>("supplierMilkPrices")
       .createIndex(
@@ -76,7 +76,7 @@ async function prepareDatabase() {
       .createIndex({ milkType: 1, effectiveFrom: -1 }),
     db
       .collection<StoredDocument>("supplierAccountMovements")
-      .createIndex({ supplierId: 1, businessDate: -1, createdAt: -1 }),
+      .createIndex({ supplierId: 1, milkType: 1, businessDate: -1, createdAt: -1 }),
     db
       .collection<StoredDocument>("supplierAccountMovements")
       .createIndex({ ownerReviewStatus: 1, createdAt: -1 }),
@@ -85,7 +85,7 @@ async function prepareDatabase() {
     db.collection<StoredDocument>("supplierRepaymentInstructions").createIndex({ updatedAt: -1 }),
     db
       .collection<StoredDocument>("supplierSettlements")
-      .createIndex({ supplierId: 1, createdAt: -1 }),
+      .createIndex({ supplierId: 1, milkType: 1, createdAt: -1 }),
     db
       .collection<StoredDocument>("supplierSettlements")
       .createIndex({ paymentMovementId: 1 }, { unique: true, sparse: true }),

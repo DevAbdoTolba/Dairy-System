@@ -1,8 +1,7 @@
 import type { ClientSession, Document, Filter } from "mongodb";
 import { getDb } from "@/shared/db";
 import type { Role } from "@/modules/auth/domain/role";
-import type { MilkEntry, SupplierShift } from "../domain/shift";
-import { milkTypes } from "../domain/shift";
+import { milkTypes, type MilkType, type MilkEntry, type SupplierShift } from "../domain/shift";
 import type { Supplier } from "../domain/supplier";
 import type { SupplierVisit } from "../domain/prediction";
 import type {
@@ -49,6 +48,18 @@ type SupplierEventDocument = {
   createdAt: string;
 };
 
+function accountMilkTypeFilter(milkType: MilkType): Filter<AccountMovementDocument> {
+  return milkType === "COW"
+    ? { $or: [{ milkType: "COW" }, { milkType: { $exists: false } }] }
+    : { milkType };
+}
+
+function settlementMilkTypeFilter(milkType: MilkType): Filter<SupplierSettlementDocument> {
+  return milkType === "COW"
+    ? { $or: [{ milkType: "COW" }, { milkType: { $exists: false } }] }
+    : { milkType };
+}
+
 function asSupplier(document: SupplierDocument): Supplier {
   const { _id, ...supplier } = document;
   // Existing suppliers predate the milk-type setting. They remain usable as both
@@ -80,12 +91,14 @@ function asMilkPrice(document: MilkPriceDocument): MilkPricePeriod {
 
 function asAccountMovement(document: AccountMovementDocument): SupplierAccountMovement {
   const { _id, ...movement } = document;
-  return { id: _id, ...movement };
+  // Account movements created before type-separated accounts are retained in
+  // the cow account rather than being copied into both accounts.
+  return { id: _id, ...movement, milkType: movement.milkType ?? "COW" };
 }
 
 function asSettlement(document: SupplierSettlementDocument): SupplierSettlement {
   const { _id, ...settlement } = document;
-  return { id: _id, ...settlement };
+  return { id: _id, ...settlement, milkType: settlement.milkType ?? "COW" };
 }
 
 export async function listSuppliers(
@@ -244,12 +257,13 @@ export async function listMilkEntries(
 
 export async function listMilkEntriesForSupplier(
   supplierId: string,
+  milkType?: MilkType,
   options: Options = {},
 ): Promise<MilkEntry[]> {
   const db = await getDb();
   const entries = await db
     .collection<MilkEntryDocument>("supplierMilkEntries")
-    .find({ supplierId }, options)
+    .find({ supplierId, ...(milkType ? { milkType } : {}) }, options)
     .sort({ businessDate: 1, createdAt: 1, _id: 1 })
     .toArray();
   return entries.map(asMilkEntry);
@@ -257,6 +271,7 @@ export async function listMilkEntriesForSupplier(
 
 export async function listUnsettledMilkEntries(
   supplierId: string,
+  milkType: MilkType,
   cutoffDate: string,
   options: Options = {},
 ): Promise<MilkEntry[]> {
@@ -264,7 +279,13 @@ export async function listUnsettledMilkEntries(
   const entries = await db
     .collection<MilkEntryDocument>("supplierMilkEntries")
     .find(
-      { supplierId, businessDate: { $lte: cutoffDate }, deletedAt: null, settlementId: null },
+      {
+        supplierId,
+        milkType,
+        businessDate: { $lte: cutoffDate },
+        deletedAt: null,
+        settlementId: null,
+      },
       options,
     )
     .sort({ businessDate: 1, createdAt: 1, _id: 1 })
@@ -472,6 +493,7 @@ export async function insertAccountMovement(
 export async function listAccountMovements(
   filters: {
     supplierId?: string;
+    milkType?: MilkType;
     shiftId?: string;
     ownerReviewStatus?: SupplierAccountMovement["ownerReviewStatus"];
   } = {},
@@ -480,6 +502,7 @@ export async function listAccountMovements(
   const db = await getDb();
   const filter: Filter<AccountMovementDocument> = {};
   if (filters.supplierId) filter.supplierId = filters.supplierId;
+  if (filters.milkType) Object.assign(filter, accountMilkTypeFilter(filters.milkType));
   if (filters.shiftId) filter.shiftId = filters.shiftId;
   if (filters.ownerReviewStatus) filter.ownerReviewStatus = filters.ownerReviewStatus;
   const movements = await db
@@ -492,13 +515,22 @@ export async function listAccountMovements(
 
 export async function listUnsettledAccountMovements(
   supplierId: string,
+  milkType: MilkType,
   cutoffDate: string,
   options: Options = {},
 ): Promise<SupplierAccountMovement[]> {
   const db = await getDb();
   const movements = await db
     .collection<AccountMovementDocument>("supplierAccountMovements")
-    .find({ supplierId, businessDate: { $lte: cutoffDate }, settlementId: null }, options)
+    .find(
+      {
+        supplierId,
+        businessDate: { $lte: cutoffDate },
+        settlementId: null,
+        ...accountMilkTypeFilter(milkType),
+      },
+      options,
+    )
     .sort({ businessDate: 1, createdAt: 1, _id: 1 })
     .toArray();
   return movements.map(asAccountMovement);
@@ -551,18 +583,36 @@ export async function markAccountMovementReviewed(id: string, options: Options =
   return getAccountMovement(id, options);
 }
 
-export async function getRepaymentInstruction(supplierId: string, options: Options = {}) {
+function repaymentInstructionId(supplierId: string, milkType: MilkType) {
+  return `${supplierId}:${milkType}`;
+}
+
+export async function getRepaymentInstruction(
+  supplierId: string,
+  milkType: MilkType,
+  options: Options = {},
+) {
   const db = await getDb();
   const instruction = await db
     .collection<RepaymentInstructionDocument>("supplierRepaymentInstructions")
-    .findOne({ _id: supplierId }, options);
-  if (!instruction) return undefined;
+    .findOne({ _id: repaymentInstructionId(supplierId, milkType) }, options);
+  // The original instruction was one-per-supplier. It belongs to the cow
+  // account after the split, matching the legacy movement migration rule.
+  const legacyInstruction =
+    !instruction && milkType === "COW"
+      ? await db
+          .collection<RepaymentInstructionDocument>("supplierRepaymentInstructions")
+          .findOne({ _id: supplierId }, options)
+      : null;
+  const resolvedInstruction = instruction ?? legacyInstruction;
+  if (!resolvedInstruction) return undefined;
   return {
-    supplierId: instruction.supplierId,
-    suggestedDeductionPiasters: instruction.suggestedDeductionPiasters,
-    holdPaymentUntil: instruction.holdPaymentUntil,
-    note: instruction.note,
-    updatedAt: instruction.updatedAt,
+    supplierId: resolvedInstruction.supplierId,
+    milkType: resolvedInstruction.milkType ?? "COW",
+    suggestedDeductionPiasters: resolvedInstruction.suggestedDeductionPiasters,
+    holdPaymentUntil: resolvedInstruction.holdPaymentUntil,
+    note: resolvedInstruction.note,
+    updatedAt: resolvedInstruction.updatedAt,
   };
 }
 
@@ -571,13 +621,14 @@ export async function upsertRepaymentInstruction(
   options: Options = {},
 ) {
   const db = await getDb();
-  await db
-    .collection<RepaymentInstructionDocument>("supplierRepaymentInstructions")
-    .updateOne(
-      { _id: instruction.supplierId },
-      { $set: instruction, $setOnInsert: { _id: instruction.supplierId } },
-      { upsert: true, ...options },
-    );
+  await db.collection<RepaymentInstructionDocument>("supplierRepaymentInstructions").updateOne(
+    { _id: repaymentInstructionId(instruction.supplierId, instruction.milkType) },
+    {
+      $set: instruction,
+      $setOnInsert: { _id: repaymentInstructionId(instruction.supplierId, instruction.milkType) },
+    },
+    { upsert: true, ...options },
+  );
   return instruction;
 }
 
@@ -599,22 +650,33 @@ export async function getSettlement(id: string, options: Options = {}) {
 
 export async function listSupplierSettlements(
   supplierId?: string,
+  milkType?: MilkType,
   options: Options = {},
 ): Promise<SupplierSettlement[]> {
   const db = await getDb();
   const settlements = await db
     .collection<SupplierSettlementDocument>("supplierSettlements")
-    .find(supplierId ? { supplierId } : {}, options)
+    .find(
+      {
+        ...(supplierId ? { supplierId } : {}),
+        ...(milkType ? settlementMilkTypeFilter(milkType) : {}),
+      },
+      options,
+    )
     .sort({ createdAt: -1, _id: -1 })
     .toArray();
   return settlements.map(asSettlement);
 }
 
-export async function getLatestSupplierSettlement(supplierId: string, options: Options = {}) {
+export async function getLatestSupplierSettlement(
+  supplierId: string,
+  milkType: MilkType,
+  options: Options = {},
+) {
   const db = await getDb();
   const settlement = await db
     .collection<SupplierSettlementDocument>("supplierSettlements")
-    .find({ supplierId }, options)
+    .find({ supplierId, ...settlementMilkTypeFilter(milkType) }, options)
     .sort({ createdAt: -1, _id: -1 })
     .limit(1)
     .next();

@@ -75,6 +75,9 @@ const closeShiftSchema = commandSchema.extend({
           z.object({
             id: z.string().uuid(),
             supplierId: z.string().uuid(),
+            // Old downloaded snapshots did not include a milk type. Keep them
+            // recoverable in the cow account instead of duplicating cash.
+            milkType: z.enum(milkTypes).optional().default("COW"),
             amountPiasters: z.number().int().positive(),
             note: z.string().max(500),
             createdAt: z.string().datetime(),
@@ -142,6 +145,8 @@ export async function addMilkEntry(shiftId: string, rawInput: CreateMilkInput, a
       if (!shift) throw new SupplierBusinessRuleError("الوردية غير موجودة.");
       assertOpenShift(shift);
       if (!supplier?.active) throw new SupplierBusinessRuleError("المورد غير متاح للتسجيل.");
+      if (!supplier.milkTypes.includes(input.milkType))
+        throw new SupplierBusinessRuleError("نوع اللبن غير مسجل لهذا المورد.");
       const timestamp = new Date().toISOString();
       const entry: MilkEntry = {
         id: input.entryId,
@@ -316,6 +321,7 @@ async function reconcileSnapshotBeforeClose(
         existing.type !== "POS_CASH_OUT" ||
         (recovery &&
           (existing.supplierId !== recovery.supplierId ||
+            existing.milkType !== recovery.milkType ||
             existing.amountPiasters !== recovery.amountPiasters))
       )
         throw new SupplierBusinessRuleError("تعارضت حركة النقد مع نسخة إغلاق أخرى. راجع المالك.");
@@ -328,6 +334,7 @@ async function reconcileSnapshotBeforeClose(
     const movement: SupplierAccountMovement = {
       id: recovery.id,
       supplierId: recovery.supplierId,
+      milkType: recovery.milkType,
       type: "POS_CASH_OUT",
       amountPiasters: recovery.amountPiasters,
       businessDate: shift.businessDate,

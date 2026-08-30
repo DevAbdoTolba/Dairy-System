@@ -12,7 +12,12 @@ import {
 } from "../domain/account-ledger";
 import { milkLineValuePiasters } from "../domain/money";
 import { priceForDelivery, type MilkPricePeriod } from "../domain/price";
-import { milkTypes, assertOpenShift, SupplierBusinessRuleError } from "../domain/shift";
+import {
+  milkTypes,
+  assertOpenShift,
+  SupplierBusinessRuleError,
+  type MilkType,
+} from "../domain/shift";
 import {
   getAccountMovement,
   getRepaymentInstruction,
@@ -38,12 +43,14 @@ const priceSchema = commandSchema.extend({
 const cashSchema = commandSchema.extend({
   movementId: z.string().uuid(),
   supplierId: z.string().uuid(),
+  milkType: z.enum(milkTypes),
   amountPiasters: z.number().int().positive().max(100_000_000),
   note: z.string().trim().max(500).optional().default(""),
 });
 const ownerMovementSchema = commandSchema.extend({
   movementId: z.string().uuid(),
   supplierId: z.string().uuid(),
+  milkType: z.enum(milkTypes),
   type: z.enum(["OWNER_CASH_OUT", "GOODS_CHARGE", "MANUAL_CREDIT", "MANUAL_DEBIT"]),
   amountPiasters: z.number().int().positive().max(100_000_000),
   businessDate: z.string().refine(isIsoDate, "التاريخ غير صحيح."),
@@ -52,6 +59,7 @@ const ownerMovementSchema = commandSchema.extend({
 const reviewSchema = commandSchema.extend({ movementId: z.string().uuid() });
 const repaymentInstructionSchema = commandSchema.extend({
   supplierId: z.string().uuid(),
+  milkType: z.enum(milkTypes),
   suggestedDeductionPiasters: z.number().int().min(0).max(100_000_000),
   holdPaymentUntil: z.string().refine(isIsoDate, "التاريخ غير صحيح.").nullable().optional(),
   note: z.string().trim().max(500).optional().default(""),
@@ -76,9 +84,15 @@ function optionalNote(value: string) {
   return value || null;
 }
 
-async function assertActiveSupplier(supplierId: string, session?: ClientSession) {
+async function assertActiveSupplier(
+  supplierId: string,
+  milkType: MilkType,
+  session?: ClientSession,
+) {
   const supplier = await getSupplier(supplierId, { session });
   if (!supplier?.active) throw new SupplierBusinessRuleError("المورد غير متاح للتسجيل.");
+  if (!supplier.milkTypes.includes(milkType))
+    throw new SupplierBusinessRuleError("نوع اللبن غير مسجل لهذا المورد.");
   return supplier;
 }
 
@@ -125,10 +139,11 @@ export async function recordShiftCash(
       const [shift] = await Promise.all([getResolvedShift(shiftId, { session })]);
       if (!shift) throw new SupplierBusinessRuleError("الوردية غير موجودة.");
       assertOpenShift(shift);
-      await assertActiveSupplier(input.supplierId, session);
+      await assertActiveSupplier(input.supplierId, input.milkType, session);
       const movement: SupplierAccountMovement = {
         id: input.movementId,
         supplierId: input.supplierId,
+        milkType: input.milkType,
         type: "POS_CASH_OUT",
         amountPiasters: input.amountPiasters,
         businessDate: shift.businessDate,
@@ -155,10 +170,11 @@ export async function recordOwnerMovement(rawInput: RecordOwnerMovementInput) {
     input.movementId,
     "OWNER",
     async (session) => {
-      await assertActiveSupplier(input.supplierId, session);
+      await assertActiveSupplier(input.supplierId, input.milkType, session);
       const movement: SupplierAccountMovement = {
         id: input.movementId,
         supplierId: input.supplierId,
+        milkType: input.milkType,
         type: input.type as AccountMovementType,
         amountPiasters: input.amountPiasters,
         businessDate: input.businessDate,
@@ -206,9 +222,10 @@ export async function setRepaymentInstruction(rawInput: SetRepaymentInstructionI
     input.supplierId,
     "OWNER",
     async (session) => {
-      await assertActiveSupplier(input.supplierId, session);
+      await assertActiveSupplier(input.supplierId, input.milkType, session);
       const instruction: SupplierRepaymentInstruction = {
         supplierId: input.supplierId,
+        milkType: input.milkType,
         suggestedDeductionPiasters: input.suggestedDeductionPiasters,
         holdPaymentUntil: input.holdPaymentUntil ?? null,
         note: optionalNote(input.note),
@@ -229,13 +246,13 @@ export async function listPendingPosCash() {
   return listAccountMovements({ ownerReviewStatus: "PENDING" });
 }
 
-export async function getSupplierAccount(supplierId: string) {
+export async function getSupplierAccount(supplierId: string, milkType: MilkType) {
   const [supplier, entries, movements, prices, instruction] = await Promise.all([
     getSupplier(supplierId),
-    listMilkEntriesForSupplier(supplierId),
-    listAccountMovements({ supplierId }),
+    listMilkEntriesForSupplier(supplierId, milkType),
+    listAccountMovements({ supplierId, milkType }),
     listMilkPrices(),
-    getRepaymentInstruction(supplierId),
+    getRepaymentInstruction(supplierId, milkType),
   ]);
   if (!supplier) throw new SupplierBusinessRuleError("المورد غير موجود.");
   const milkLines: AccountMilkLine[] = entries
@@ -260,6 +277,7 @@ export async function getSupplierAccount(supplierId: string) {
   const unpricedMilkLines = milkLines.filter((line) => line.valuePiasters === null).length;
   return {
     supplier,
+    milkType,
     movements,
     milkLines,
     instruction: instruction ?? null,
@@ -273,17 +291,21 @@ export async function getSupplierAccount(supplierId: string) {
 export async function listSupplierAccountSummaries() {
   const suppliers = await listSuppliers();
   return Promise.all(
-    suppliers.map(async (supplier) => {
-      const account = await getSupplierAccount(supplier.id);
-      return {
-        supplier: account.supplier,
-        balancePiasters: account.balancePiasters,
-        unpricedMilkLines: account.unpricedMilkLines,
-        pendingReviewCount: account.movements.filter(
-          (movement) => movement.ownerReviewStatus === "PENDING",
-        ).length,
-      };
-    }),
+    suppliers.flatMap((supplier) =>
+      supplier.milkTypes.map(async (milkType) => {
+        const account = await getSupplierAccount(supplier.id, milkType);
+        return {
+          id: `${supplier.id}:${milkType}`,
+          supplier: account.supplier,
+          milkType,
+          balancePiasters: account.balancePiasters,
+          unpricedMilkLines: account.unpricedMilkLines,
+          pendingReviewCount: account.movements.filter(
+            (movement) => movement.ownerReviewStatus === "PENDING",
+          ).length,
+        };
+      }),
+    ),
   );
 }
 

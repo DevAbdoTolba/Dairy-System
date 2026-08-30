@@ -35,6 +35,7 @@ export type PosBootstrap = {
     id: string;
     supplierId: string;
     supplierName: string;
+    milkType: "COW" | "BUFFALO";
     createdAt: string;
     /** Present only in local durable state; never serialized by the POS API. */
     amountPiasters?: number;
@@ -95,6 +96,7 @@ export async function getPosBootstrap(shiftId: string): Promise<PosBootstrap> {
         id: movement.id,
         supplierId: movement.supplierId,
         supplierName: supplierById.get(movement.supplierId)?.displayName ?? "مورد غير متاح",
+        milkType: movement.milkType,
         createdAt: movement.createdAt,
       })),
   };

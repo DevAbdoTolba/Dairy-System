@@ -1,4 +1,5 @@
 import type { Role } from "@/modules/auth/domain/role";
+import type { MilkType } from "./shift";
 
 export const accountMovementTypes = [
   "POS_CASH_OUT",
@@ -14,6 +15,7 @@ export type OwnerReviewStatus = "PENDING" | "REVIEWED" | "NOT_REQUIRED";
 export type SupplierAccountMovement = {
   id: string;
   supplierId: string;
+  milkType: MilkType;
   type: AccountMovementType;
   amountPiasters: number;
   businessDate: string;
@@ -27,6 +29,7 @@ export type SupplierAccountMovement = {
 
 export type SupplierRepaymentInstruction = {
   supplierId: string;
+  milkType: MilkType;
   suggestedDeductionPiasters: number;
   holdPaymentUntil: string | null;
   note: string | null;

@@ -22,7 +22,9 @@ export default async function SupplierSettlementPrintPage({
             إيصال تسوية مورد
           </Typography>
           <Typography>
-            {supplier?.displayName ?? "مورد"} · حتى {settlement.cutoffDate}
+            {supplier?.displayName ?? "مورد"} ·{" "}
+            {settlement.milkType === "COW" ? "لبن بقري" : "لبن جاموسي"} · حتى{" "}
+            {settlement.cutoffDate}
           </Typography>
         </Box>
         <Divider />
