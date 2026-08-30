@@ -1,8 +1,6 @@
 "use client";
 
 import CloseOutlinedIcon from "@mui/icons-material/CloseOutlined";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlineOutlined";
-import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import HistoryOutlinedIcon from "@mui/icons-material/HistoryOutlined";
 import MoneyOffOutlinedIcon from "@mui/icons-material/MoneyOffOutlined";
 import ReplayOutlinedIcon from "@mui/icons-material/ReplayOutlined";
@@ -15,7 +13,6 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Fab from "@mui/material/Fab";
 import Grid from "@mui/material/Grid";
-import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
@@ -47,6 +44,9 @@ import {
 
 type TimelineEntry = PosBootstrap["entries"][number];
 type CashRecord = PosBootstrap["cashRecords"][number];
+type HistoryItem =
+  | { kind: "milk"; createdAt: string; entry: TimelineEntry }
+  | { kind: "cash"; createdAt: string; record: CashRecord };
 
 const shiftLabels: Record<ShiftType, string> = { MORNING: "وردية صباحية", NIGHT: "وردية مسائية" };
 const milkLabels: Record<MilkType, string> = { COW: "لبن بقري", BUFFALO: "لبن جاموسي" };
@@ -65,6 +65,21 @@ const vintageNameButtonSx = {
   boxShadow: "3px 3px 0 #dac19b",
   fontSize: { xs: "1.15rem", sm: "1.28rem" },
   fontWeight: 800,
+  "&:hover": { backgroundColor: "#f8eedc", boxShadow: "1px 1px 0 #dac19b" },
+};
+
+const vintageHeaderActionSx = {
+  position: "absolute",
+  top: 0,
+  width: "clamp(76px, 8vw, 132px)",
+  minWidth: 0,
+  height: "100%",
+  minHeight: 0,
+  border: "2px solid #8b6945",
+  borderRadius: 1.25,
+  color: "#3e2d1c",
+  backgroundColor: "#fffaf0",
+  boxShadow: "3px 3px 0 #dac19b",
   "&:hover": { backgroundColor: "#f8eedc", boxShadow: "1px 1px 0 #dac19b" },
 };
 
@@ -88,6 +103,14 @@ function cairoClock() {
   }).format(new Date());
 }
 
+function formatHistoryTime(timestamp: string) {
+  return new Intl.DateTimeFormat("ar-EG", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Africa/Cairo",
+  }).format(new Date(timestamp));
+}
+
 export function PosWorkspace({
   businessDate,
   credentialRole,
@@ -108,7 +131,7 @@ export function PosWorkspace({
   const [editingEntry, setEditingEntry] = useState<TimelineEntry | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyScope, setHistoryScope] = useState<"supplier" | "shift" | null>(null);
 
   const selectedSupplier =
     data?.suppliers.find((supplier) => supplier.id === selectedSupplierId) ?? null;
@@ -126,6 +149,20 @@ export function PosWorkspace({
     (total, amount) => total + amount * cashCounts[amount] * 100,
     0,
   );
+  const historyItems = useMemo<HistoryItem[]>(() => {
+    if (!data || !historyScope) return [];
+    const supplierId = historyScope === "supplier" ? selectedSupplierId : null;
+    const belongsToScope = (record: { supplierId: string }) =>
+      !supplierId || record.supplierId === supplierId;
+    return [
+      ...data.entries
+        .filter((entry) => !entry.deletedAt && belongsToScope(entry))
+        .map((entry) => ({ kind: "milk" as const, createdAt: entry.createdAt, entry })),
+      ...data.cashRecords
+        .filter(belongsToScope)
+        .map((record) => ({ kind: "cash" as const, createdAt: record.createdAt, record })),
+    ].sort((first, second) => second.createdAt.localeCompare(first.createdAt));
+  }, [data, historyScope, selectedSupplierId]);
 
   const loadBootstrap = useCallback(
     async (shiftId: string) => {
@@ -399,47 +436,6 @@ export function PosWorkspace({
     }
   }
 
-  async function deleteEntry(entry: TimelineEntry) {
-    if (
-      !data ||
-      data.shift.status !== "OPEN" ||
-      entry.deletedAt ||
-      !window.confirm("حذف هذه الحركة من الوردية المفتوحة؟")
-    )
-      return;
-    setBusy(true);
-    setError(null);
-    try {
-      const localData: PosBootstrap = {
-        ...data,
-        entries: data.entries.map((candidate) =>
-          candidate.id === entry.id
-            ? {
-                ...candidate,
-                revision: candidate.revision + 1,
-                deletedAt: new Date().toISOString(),
-              }
-            : candidate,
-        ),
-      };
-      const outboxEntry = await persistSupplierWorkspaceCommand(localData, {
-        id: requestId(),
-        endpoint: `/api/supplier-shifts/${data.shift.id}/milk/${entry.id}`,
-        method: "DELETE",
-        payload: { commandId: requestId(), expectedRevision: entry.revision },
-      });
-      setData(localData);
-      const result = await syncPersistedSupplierCommand<{ entry: TimelineEntry }>(outboxEntry);
-      if (result.status === "synced") await loadBootstrap(data.shift.id);
-    } catch (caught) {
-      setData(data);
-      void cachePosWorkspace(data);
-      setError(caught instanceof Error ? caught.message : "تعذر حذف الحركة.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function saveCash() {
     if (
       !data ||
@@ -613,7 +609,7 @@ export function PosWorkspace({
                 align="center"
                 sx={{
                   display: "block",
-                  px: { xs: 6, sm: 8 },
+                  px: { xs: 11, sm: 14 },
                   py: 1,
                   fontSize: "clamp(1.7rem, 4.4vw, 4rem)",
                   fontWeight: 800,
@@ -624,67 +620,33 @@ export function PosWorkspace({
               </Typography>
             </Box>
             {selectedSupplier && (
-              <IconButton
+              <Button
                 type="button"
-                aria-label="آخر الحركات"
-                onClick={() => setHistoryOpen(true)}
-                sx={{
-                  position: "absolute",
-                  top: 5,
-                  left: 5,
-                  minWidth: 44,
-                  minHeight: 44,
-                  border: "2px solid #8b6945",
-                  color: "#3e2d1c",
-                  backgroundColor: "#fffaf0",
-                }}
+                aria-label="العودة لاختيار المورد"
+                onClick={finishSupplier}
+                sx={{ ...vintageHeaderActionSx, left: 0 }}
               >
-                <HistoryOutlinedIcon />
-              </IconButton>
+                <ReplayOutlinedIcon sx={{ fontSize: "clamp(2rem, 3vw, 3rem)" }} />
+              </Button>
             )}
             {!selectedSupplier && prefix.length > 0 && (
               <Button
                 type="button"
                 aria-label="إعادة اختيار الاسم"
                 onClick={() => setPrefix([])}
-                sx={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "clamp(80px, 7vw, 128px)",
-                  minWidth: 0,
-                  height: "100%",
-                  minHeight: 0,
-                  border: "2px solid #8b6945",
-                  borderRadius: 1.25,
-                  color: "#3e2d1c",
-                  backgroundColor: "#fffaf0",
-                  boxShadow: "3px 3px 0 #dac19b",
-                  "&:hover": { backgroundColor: "#f8eedc", boxShadow: "1px 1px 0 #dac19b" },
-                }}
+                sx={{ ...vintageHeaderActionSx, left: 0 }}
               >
                 <ReplayOutlinedIcon sx={{ fontSize: "clamp(2rem, 3vw, 3rem)" }} />
               </Button>
             )}
-            {selectedSupplier && (
-              <IconButton
-                type="button"
-                aria-label="إلغاء المورد"
-                onClick={finishSupplier}
-                sx={{
-                  position: "absolute",
-                  top: 5,
-                  right: 5,
-                  minWidth: 44,
-                  minHeight: 44,
-                  border: "2px solid #8b6945",
-                  color: "#3e2d1c",
-                  backgroundColor: "#fffaf0",
-                }}
-              >
-                <CloseOutlinedIcon />
-              </IconButton>
-            )}
+            <Button
+              type="button"
+              aria-label={selectedSupplier ? "سجل هذا المورد" : "سجل الوردية"}
+              onClick={() => setHistoryScope(selectedSupplier ? "supplier" : "shift")}
+              sx={{ ...vintageHeaderActionSx, right: 0 }}
+            >
+              <HistoryOutlinedIcon sx={{ fontSize: "clamp(2rem, 3vw, 3rem)" }} />
+            </Button>
           </Box>
 
           {!selectedSupplier && (
@@ -738,6 +700,28 @@ export function PosWorkspace({
 
           {selectedSupplier && (
             <Stack spacing={1.5} sx={{ flexGrow: 1, justifyContent: "center", pb: "8vh" }}>
+              {editingEntry && (
+                <Box
+                  role="status"
+                  sx={{
+                    alignSelf: "center",
+                    width: "min(100%, 520px)",
+                    border: "2px solid #a85420",
+                    borderRadius: 1.25,
+                    backgroundColor: "#fff0df",
+                    color: "#7a3513",
+                    boxShadow: "3px 3px 0 #e8b078",
+                    px: 2,
+                    py: 1.25,
+                    textAlign: "center",
+                  }}
+                >
+                  <Typography sx={{ fontWeight: 900, fontSize: { xs: "1.15rem", sm: "1.35rem" } }}>
+                    تعديل تسجيل سابق
+                  </Typography>
+                  <Typography variant="body2">اضغطي اسم المورد لحفظ التعديل</Typography>
+                </Box>
+              )}
               {selectedSupplier.posInstruction && (
                 <Typography color="text.secondary">{selectedSupplier.posInstruction}</Typography>
               )}
@@ -776,11 +760,6 @@ export function PosWorkspace({
                     onAddQuarter={() => changeQuantity(1)}
                     onRemoveQuarter={() => changeQuantity(-1)}
                   />
-                  {editingEntry && (
-                    <Typography color="text.secondary" align="center">
-                      اضغط الاسم لتسجيل التعديل
-                    </Typography>
-                  )}
                 </>
               )}
             </Stack>
@@ -904,79 +883,90 @@ export function PosWorkspace({
       </Dialog>
 
       <Dialog
-        open={historyOpen}
-        onClose={() => !busy && setHistoryOpen(false)}
+        open={historyScope !== null}
+        onClose={() => !busy && setHistoryScope(null)}
         fullWidth
         maxWidth="sm"
       >
-        <DialogTitle>آخر الحركات</DialogTitle>
+        <DialogTitle>{historyScope === "supplier" ? "سجل المورد" : "سجل الوردية"}</DialogTitle>
         <DialogContent dividers>
-          <Stack spacing={0.75}>
-            {data.entries
-              .filter((entry) => !entry.deletedAt)
-              .slice()
-              .reverse()
-              .map((entry) => (
-                <Stack
-                  key={entry.id}
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={1}
+          <Stack spacing={1}>
+            {historyItems.map((item) =>
+              item.kind === "milk" ? (
+                <Button
+                  key={item.entry.id}
+                  type="button"
+                  fullWidth
+                  disabled={busy || data.shift.status !== "OPEN"}
+                  onClick={() => {
+                    setHistoryScope(null);
+                    startEdit(item.entry);
+                  }}
                   sx={{
-                    alignItems: { sm: "center" },
-                    p: 1,
-                    border: "1px solid",
-                    borderColor: "divider",
-                    borderRadius: 1.5,
+                    justifyContent: "stretch",
+                    minHeight: 72,
+                    border: "2px solid #8b6945",
+                    borderRadius: 1.25,
+                    color: "#3e2d1c",
+                    backgroundColor: "#fffaf0",
+                    boxShadow: "2px 2px 0 #dac19b",
+                    textAlign: "start",
+                    "&:hover": { backgroundColor: "#f8eedc", boxShadow: "1px 1px 0 #dac19b" },
                   }}
                 >
-                  <Typography sx={{ flexGrow: 1 }}>
-                    {entry.supplierName} · {milkLabels[entry.milkType]} ·{" "}
-                    {formatQuantityArabic(entry.quantityQuarterCupUnits)}
-                  </Typography>
-                  <Stack direction="row" spacing={0.75}>
-                    <Button
-                      type="button"
-                      size="small"
-                      startIcon={<EditOutlinedIcon />}
-                      disabled={busy || data.shift.status !== "OPEN"}
-                      onClick={() => {
-                        setHistoryOpen(false);
-                        startEdit(entry);
-                      }}
-                    >
-                      تعديل
-                    </Button>
-                    <Button
-                      type="button"
-                      size="small"
-                      color="error"
-                      startIcon={<DeleteOutlineIcon />}
-                      disabled={busy || data.shift.status !== "OPEN"}
-                      onClick={() => deleteEntry(entry)}
-                    >
-                      حذف
-                    </Button>
+                  <Stack spacing={0.25} sx={{ width: "100%" }}>
+                    <Typography sx={{ fontWeight: 900, fontSize: "1.05rem" }}>
+                      {historyScope === "supplier"
+                        ? formatQuantityArabic(item.entry.quantityQuarterCupUnits)
+                        : item.entry.supplierName}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {historyScope === "supplier"
+                        ? item.entry.supplierName
+                        : formatQuantityArabic(item.entry.quantityQuarterCupUnits)}
+                      {" · "}
+                      {milkLabels[item.entry.milkType]}
+                      {" · "}
+                      {formatHistoryTime(item.createdAt)}
+                    </Typography>
                   </Stack>
-                </Stack>
-              ))}
-            {data.entries.filter((entry) => !entry.deletedAt).length === 0 && (
-              <Typography color="text.secondary">لا توجد حركة في هذه الوردية بعد.</Typography>
-            )}
-            {data.cashRecords
-              .slice()
-              .reverse()
-              .map((movement) => (
-                <Typography
-                  key={movement.id}
-                  sx={{ p: 1, border: "1px solid", borderColor: "divider", borderRadius: 1.5 }}
+                </Button>
+              ) : (
+                <Paper
+                  key={item.record.id}
+                  variant="outlined"
+                  sx={{
+                    border: "2px solid #d3c6b5",
+                    borderRadius: 1.25,
+                    bgcolor: "#fffdf9",
+                    p: 1.25,
+                  }}
                 >
-                  {movement.supplierName} · {milkLabels[movement.milkType]} · خصم نقد
-                </Typography>
-              ))}
+                  <Typography sx={{ fontWeight: 800 }}>
+                    {historyScope === "supplier" ? "خصم نقد" : item.record.supplierName}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {historyScope === "supplier" ? item.record.supplierName : "خصم نقد"}
+                    {" · "}
+                    {milkLabels[item.record.milkType]}
+                    {" · "}
+                    {((item.record.amountPiasters ?? 0) / 100).toLocaleString("ar-EG")} ج{" · "}
+                    {formatHistoryTime(item.createdAt)}
+                  </Typography>
+                </Paper>
+              ),
+            )}
+            {historyItems.length === 0 && (
+              <Typography color="text.secondary">
+                {historyScope === "supplier"
+                  ? "لا توجد حركة لهذا المورد في هذه الوردية بعد."
+                  : "لا توجد حركة في هذه الوردية بعد."}
+              </Typography>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button type="button" onClick={() => setHistoryOpen(false)}>
+          <Button type="button" onClick={() => setHistoryScope(null)}>
             إغلاق
           </Button>
         </DialogActions>
