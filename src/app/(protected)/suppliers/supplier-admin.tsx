@@ -12,19 +12,61 @@ import Typography from "@mui/material/Typography";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Supplier } from "@/modules/suppliers";
+import { milkTypes, type MilkType } from "@/modules/suppliers/domain/shift";
 
 type SupplierPayload = { supplier?: Supplier; error?: string };
 
-const demoSuppliers = [
-  "أم أحمد",
-  "فاطمة حسن",
-  "زينب علي",
-  "هدى إبراهيم",
-  "سعاد محمود",
-  "نجاة يوسف",
-  "صفية عبد الله",
-  "أمينة محمد",
+const demoSuppliers: Array<{ displayName: string; milkTypes: MilkType[] }> = [
+  { displayName: "أم أحمد", milkTypes: ["COW"] },
+  { displayName: "فاطمة حسن", milkTypes: ["BUFFALO"] },
+  { displayName: "زينب علي", milkTypes: ["COW", "BUFFALO"] },
+  { displayName: "هدى إبراهيم", milkTypes: ["COW"] },
+  { displayName: "سعاد محمود", milkTypes: ["BUFFALO"] },
+  { displayName: "نجاة يوسف", milkTypes: ["COW", "BUFFALO"] },
+  { displayName: "صفية عبد الله", milkTypes: ["COW"] },
+  { displayName: "أمينة محمد", milkTypes: ["BUFFALO"] },
 ];
+
+const milkLabels: Record<MilkType, string> = { COW: "لبن بقري", BUFFALO: "لبن جاموسي" };
+
+function MilkTypePicker({
+  value,
+  onChange,
+}: {
+  value: MilkType[];
+  onChange: (value: MilkType[]) => void;
+}) {
+  function toggle(type: MilkType) {
+    if (value.includes(type)) {
+      if (value.length === 1) return;
+      onChange(value.filter((item) => item !== type));
+      return;
+    }
+    onChange(milkTypes.filter((item) => value.includes(item) || item === type));
+  }
+
+  return (
+    <Stack spacing={0.75}>
+      <Typography component="p" sx={{ fontWeight: 700 }}>
+        نوع اللبن الذي يأتي به المورد
+      </Typography>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+        {milkTypes.map((type) => (
+          <Button
+            key={type}
+            type="button"
+            variant={value.includes(type) ? "contained" : "outlined"}
+            aria-pressed={value.includes(type)}
+            onClick={() => toggle(type)}
+            sx={{ minHeight: 48 }}
+          >
+            {milkLabels[type]}
+          </Button>
+        ))}
+      </Stack>
+    </Stack>
+  );
+}
 
 async function responsePayload(response: Response) {
   return (await response.json()) as SupplierPayload;
@@ -34,6 +76,7 @@ function SupplierRow({ supplier }: { supplier: Supplier }) {
   const router = useRouter();
   const [displayName, setDisplayName] = useState(supplier.displayName);
   const [posInstruction, setPosInstruction] = useState(supplier.posInstruction ?? "");
+  const [supplierMilkTypes, setSupplierMilkTypes] = useState<MilkType[]>(supplier.milkTypes);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,7 +86,7 @@ function SupplierRow({ supplier }: { supplier: Supplier }) {
     const response = await fetch(`/api/suppliers/${supplier.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ displayName, posInstruction }),
+      body: JSON.stringify({ displayName, posInstruction, milkTypes: supplierMilkTypes }),
     });
     const result = await responsePayload(response);
     setBusy(false);
@@ -85,6 +128,7 @@ function SupplierRow({ supplier }: { supplier: Supplier }) {
             value={displayName}
             onChange={(event) => setDisplayName(event.target.value)}
           />
+          <MilkTypePicker value={supplierMilkTypes} onChange={setSupplierMilkTypes} />
           <TextField
             label="تعليمات تظهر للعاملات"
             value={posInstruction}
@@ -116,6 +160,7 @@ export function SupplierAdmin({ suppliers }: { suppliers: Supplier[] }) {
   const router = useRouter();
   const [displayName, setDisplayName] = useState("");
   const [posInstruction, setPosInstruction] = useState("");
+  const [supplierMilkTypes, setSupplierMilkTypes] = useState<MilkType[]>([...milkTypes]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -126,13 +171,14 @@ export function SupplierAdmin({ suppliers }: { suppliers: Supplier[] }) {
     const response = await fetch("/api/suppliers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ displayName, posInstruction }),
+      body: JSON.stringify({ displayName, posInstruction, milkTypes: supplierMilkTypes }),
     });
     const result = await responsePayload(response);
     setBusy(false);
     if (!response.ok) return setError(result.error ?? "تعذر إضافة المورد.");
     setDisplayName("");
     setPosInstruction("");
+    setSupplierMilkTypes([...milkTypes]);
     router.refresh();
   }
 
@@ -141,12 +187,12 @@ export function SupplierAdmin({ suppliers }: { suppliers: Supplier[] }) {
     setError(null);
     try {
       const existingNames = new Set(suppliers.map((supplier) => supplier.displayName));
-      for (const displayName of demoSuppliers) {
-        if (existingNames.has(displayName)) continue;
+      for (const supplier of demoSuppliers) {
+        if (existingNames.has(supplier.displayName)) continue;
         const response = await fetch("/api/suppliers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ displayName }),
+          body: JSON.stringify(supplier),
         });
         const result = await responsePayload(response);
         if (!response.ok) throw new Error(result.error ?? "تعذر إضافة الموردين للتجربة.");
@@ -182,6 +228,7 @@ export function SupplierAdmin({ suppliers }: { suppliers: Supplier[] }) {
               onChange={(event) => setDisplayName(event.target.value)}
               required
             />
+            <MilkTypePicker value={supplierMilkTypes} onChange={setSupplierMilkTypes} />
             <TextField
               label="تعليمات للعاملات (اختياري)"
               value={posInstruction}

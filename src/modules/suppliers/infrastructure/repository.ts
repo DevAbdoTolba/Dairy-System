@@ -2,6 +2,7 @@ import type { ClientSession, Document, Filter } from "mongodb";
 import { getDb } from "@/shared/db";
 import type { Role } from "@/modules/auth/domain/role";
 import type { MilkEntry, SupplierShift } from "../domain/shift";
+import { milkTypes } from "../domain/shift";
 import type { Supplier } from "../domain/supplier";
 import type { SupplierVisit } from "../domain/prediction";
 import type {
@@ -50,7 +51,16 @@ type SupplierEventDocument = {
 
 function asSupplier(document: SupplierDocument): Supplier {
   const { _id, ...supplier } = document;
-  return { id: _id, ...supplier };
+  // Existing suppliers predate the milk-type setting. They remain usable as both
+  // types until the owner changes them in the supplier admin page.
+  return {
+    id: _id,
+    ...supplier,
+    milkTypes:
+      Array.isArray(supplier.milkTypes) && supplier.milkTypes.length > 0
+        ? supplier.milkTypes
+        : [...milkTypes],
+  };
 }
 
 function asShift(document: SupplierShiftDocument): SupplierShift {
@@ -122,7 +132,13 @@ export async function updateSupplier(
   id: string,
   update: Pick<
     Supplier,
-    "displayName" | "nameTokens" | "sortKey" | "posInstruction" | "active" | "updatedAt"
+    | "displayName"
+    | "nameTokens"
+    | "sortKey"
+    | "posInstruction"
+    | "milkTypes"
+    | "active"
+    | "updatedAt"
   >,
   options: Options = {},
 ) {

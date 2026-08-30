@@ -18,6 +18,7 @@ export type PosBootstrap = {
     sortKey: string;
     active: boolean;
     posInstruction: string | null;
+    milkTypes: ("COW" | "BUFFALO")[];
   }>;
   suggestions: Array<{ id: string; displayName: string; posInstruction: string | null }>;
   entries: Array<{
@@ -62,7 +63,7 @@ export async function getPosBootstrap(shiftId: string): Promise<PosBootstrap> {
   return {
     shift,
     suppliers: suppliers.map(
-      ({ id, displayName, nameTokens, sortOrder, sortKey, active, posInstruction }) => ({
+      ({ id, displayName, nameTokens, sortOrder, sortKey, active, posInstruction, milkTypes }) => ({
         id,
         displayName,
         nameTokens,
@@ -70,6 +71,7 @@ export async function getPosBootstrap(shiftId: string): Promise<PosBootstrap> {
         sortKey,
         active,
         posInstruction,
+        milkTypes,
       }),
     ),
     suggestions: suggestions.map(({ id, displayName, posInstruction }) => ({

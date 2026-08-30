@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { nextSupplierTokens, suppliersMatchingTokens } from "./trie";
 import type { Supplier } from "./supplier";
+import type { MilkType } from "./shift";
 
 const base = {
   posInstruction: null,
+  milkTypes: ["COW", "BUFFALO"] as MilkType[],
   active: true,
   createdAt: "2026-08-29T00:00:00.000Z",
   updatedAt: "2026-08-29T00:00:00.000Z",

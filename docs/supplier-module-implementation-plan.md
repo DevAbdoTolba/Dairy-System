@@ -150,12 +150,14 @@ PIN rotation cannot revoke a verifier on a device that is completely offline and
 
 ### 4.8 Tablet POS layout
 
+The active collection screen is intentionally one-touch: suggestions disappear after a supplier is selected; the supplier name records the selected quantity; tapping a quantity label adds one and tapping its number removes one. Six cup taps carry into one satl. Supplier milk eligibility is configured by the owner as cow, buffalo, or both; a both supplier chooses the milk type immediately after the name, while all account and settlement totals remain one combined supplier account. Cash deductions open from one floating action button, and the opposite floating action button closes the shift immediately by saving/downloading its snapshot without another PIN prompt. If the browser exits full-screen during an open shift, a small logout control appears without restoring owner navigation.
+
 At the target 1180 × 820 tablet viewport, routine milk entry must not require whole-page scrolling:
 
-- compact top bar: explicit morning/night, business date, shift state, and calm sync state;
-- RTL one-third control rail: top-three strip, stable word trie, back/reset, and current supplier context;
-- RTL two-thirds action workspace: milk type, satl/cup/quarter controls, save, cash action, and “other milk type” continuation;
-- current-shift timeline in a bounded region with its own scroll only when needed.
+- clock only at the top while in full-screen; no navigation, sync state, or technical status text;
+- full-width RTL supplier chooser: prediction chips before selection and stable, large word buttons with clear tactile boundaries;
+- after a supplier is chosen, show its allowed milk type then tap-to-add satl/cup/quarter controls; keep the timeline on demand only;
+- fixed cash and close floating action buttons at opposite bottom corners.
 
 Touch controls target 56–64 px where practical and never fall below 44 px. Predictions may change only inside their labeled strip and never reorder trie buttons. No hover dependency, auto-scroll, decorative animation, or color-only state is allowed. The layout must remain usable at 200% zoom and must not overflow horizontally.
 

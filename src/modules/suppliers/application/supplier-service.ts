@@ -8,10 +8,17 @@ import {
   updateSupplier,
 } from "../infrastructure/repository";
 import { stableSupplierSortKey, supplierNameTokens, type Supplier } from "../domain/supplier";
+import { milkTypes } from "../domain/shift";
 
 const supplierInputSchema = z.object({
   displayName: z.string().trim().min(2).max(120),
   posInstruction: z.string().trim().max(500).optional().default(""),
+  milkTypes: z
+    .array(z.enum(milkTypes))
+    .min(1)
+    .max(2)
+    .optional()
+    .default([...milkTypes]),
 });
 
 export type SupplierInput = z.input<typeof supplierInputSchema>;
@@ -23,6 +30,7 @@ function supplierFields(input: SupplierInput) {
     nameTokens: supplierNameTokens(parsed.displayName),
     sortKey: stableSupplierSortKey(parsed.displayName),
     posInstruction: parsed.posInstruction || null,
+    milkTypes: [...new Set(parsed.milkTypes)],
   };
 }
 
@@ -57,6 +65,7 @@ export async function setSupplierActive(id: string, active: boolean) {
     nameTokens: existing.nameTokens,
     sortKey: existing.sortKey,
     posInstruction: existing.posInstruction,
+    milkTypes: existing.milkTypes,
     active,
     updatedAt: new Date().toISOString(),
   });

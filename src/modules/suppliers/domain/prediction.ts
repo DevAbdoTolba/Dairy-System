@@ -20,6 +20,15 @@ export function cairoTimeBucket(value: string) {
   return Math.floor(hour / 3);
 }
 
+function cairoMonth(value: string) {
+  return Number(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Africa/Cairo",
+      month: "numeric",
+    }).format(new Date(value)),
+  );
+}
+
 function dateBefore(value: string, days: number) {
   const date = new Date(`${value}T12:00:00Z`);
   date.setUTCDate(date.getUTCDate() - days);
@@ -35,6 +44,7 @@ export function predictSuppliers(input: {
   now: string;
 }) {
   const bucket = cairoTimeBucket(input.now);
+  const month = cairoMonth(input.now);
   const recentSince = dateBefore(input.businessDate, 14);
   const handled = new Set(
     input.visits
@@ -52,10 +62,18 @@ export function predictSuppliers(input: {
         (visit) =>
           visit.shiftType === input.shiftType && cairoTimeBucket(visit.createdAt) === bucket,
       ).length;
+      const sameMonth = history.filter(
+        (visit) => visit.shiftType === input.shiftType && cairoMonth(visit.createdAt) === month,
+      ).length;
       const recent = history.filter((visit) => visit.businessDate >= recentSince).length;
       return {
         supplier,
-        score: sameShift * 3 + sameBucket * 5 + recent * 2 - (handled.has(supplier.id) ? 1_000 : 0),
+        score:
+          sameShift * 3 +
+          sameBucket * 5 +
+          sameMonth * 4 +
+          recent * 2 -
+          (handled.has(supplier.id) ? 1_000 : 0),
       };
     })
     .sort(

@@ -1,3 +1,5 @@
+import type { MilkType } from "./shift";
+
 export type Supplier = {
   id: string;
   displayName: string;
@@ -5,6 +7,8 @@ export type Supplier = {
   sortOrder: number;
   sortKey: string;
   posInstruction: string | null;
+  /** Milk that this supplier is allowed to bring to the collection POS. */
+  milkTypes: MilkType[];
   active: boolean;
   createdAt: string;
   updatedAt: string;
