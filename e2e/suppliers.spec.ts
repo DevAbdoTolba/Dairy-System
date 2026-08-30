@@ -30,7 +30,7 @@ test("POS records and closes a supplier shift without owner navigation", async (
   await page.getByRole("button", { name: "فاطمة حسن", exact: true }).click();
   await page.getByRole("button", { name: "لبن بقري" }).click();
   await page.getByRole("button", { name: "إضافة الكوب" }).click();
-  await page.getByRole("button", { name: "حفظ كمية اللبن" }).click();
+  await page.getByRole("button", { name: "تسجيل كمية فاطمة حسن" }).click();
   await expect(page.getByText("فاطمة حسن").last()).toBeVisible();
   await page.getByRole("button", { name: "إنهاء الوردية" }).click();
   await expect(page.getByRole("button", { name: "صباحية" })).toBeVisible();

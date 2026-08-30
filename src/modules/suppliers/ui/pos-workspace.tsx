@@ -1,7 +1,6 @@
 "use client";
 
 import CloseOutlinedIcon from "@mui/icons-material/CloseOutlined";
-import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import HistoryOutlinedIcon from "@mui/icons-material/HistoryOutlined";
@@ -16,6 +15,7 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Fab from "@mui/material/Fab";
 import Grid from "@mui/material/Grid";
+import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
@@ -261,10 +261,28 @@ export function PosWorkspace({
   }
 
   function changeQuantity(units: number) {
-    const nextUnits = Math.max(0, quantityUnits + units);
-    setSatls(Math.floor(nextUnits / 24));
-    setCups(Math.floor((nextUnits % 24) / 4));
-    setQuarters(nextUnits % 4);
+    if (units === 24) setSatls((value) => value + 1);
+    if (units === -24) setSatls((value) => Math.max(0, value - 1));
+    if (units === 4) {
+      setCups((value) => {
+        if (value < 5) return value + 1;
+        setSatls((satl) => satl + 1);
+        return 0;
+      });
+    }
+    if (units === -4) setCups((value) => Math.max(0, value - 1));
+    if (units === 1) {
+      setQuarters((value) => {
+        if (value < 3) return value + 1;
+        setCups((cup) => {
+          if (cup < 5) return cup + 1;
+          setSatls((satl) => satl + 1);
+          return 0;
+        });
+        return 0;
+      });
+    }
+    if (units === -1) setQuarters((value) => Math.max(0, value - 1));
   }
 
   async function saveMilk() {
@@ -320,7 +338,8 @@ export function PosWorkspace({
             },
       });
       setData(localData);
-      finishSupplier();
+      setEditingEntry(null);
+      resetQuantity();
       const result = await syncPersistedSupplierCommand<{ entry: TimelineEntry }>(outboxEntry);
       if (result.status === "synced") await loadBootstrap(data.shift.id);
     } catch (caught) {
@@ -505,23 +524,55 @@ export function PosWorkspace({
         sx={{ p: { xs: 1.5, sm: 2 }, minHeight: selectedSupplier ? "auto" : "calc(100vh - 70px)" }}
       >
         <Stack spacing={1.5}>
-          <Paper
-            aria-label="المورد المختار"
-            variant="outlined"
-            sx={{
-              minHeight: 82,
-              border: "2px solid",
-              borderColor: selectedSupplier ? "primary.main" : "divider",
-              borderRadius: 1.25,
-              color: "text.primary",
-              fontSize: { xs: "1.45rem", sm: "1.7rem" },
-              fontWeight: 800,
-            }}
-          >
-            <Typography component="h1" variant="h2" align="center" sx={{ p: 2 }}>
-              {selectedSupplier?.displayName ?? " "}
-            </Typography>
-          </Paper>
+          <Box sx={{ position: "relative" }}>
+            <Box
+              component="button"
+              type="button"
+              disabled={!selectedSupplier || !milkType || !quantityUnits || busy}
+              onClick={saveMilk}
+              aria-label={
+                selectedSupplier ? `تسجيل كمية ${selectedSupplier.displayName}` : "المورد المختار"
+              }
+              sx={{
+                display: "block",
+                width: "100%",
+                minHeight: 54,
+                border: "2px solid",
+                borderColor: selectedSupplier ? "primary.main" : "divider",
+                borderRadius: 1.25,
+                color: "text.primary",
+                backgroundColor: "transparent",
+                cursor: selectedSupplier && milkType && quantityUnits ? "pointer" : "default",
+                "&:disabled": { color: "text.primary", opacity: 1 },
+              }}
+            >
+              <Typography component="h1" variant="h3" align="center" sx={{ p: 1 }}>
+                {selectedSupplier?.displayName ?? (prefix.length ? prefix.join(" ") : " ")}
+              </Typography>
+            </Box>
+            <IconButton
+              type="button"
+              aria-label={selectedSupplier ? "آخر الحركات" : "إعادة اختيار الاسم"}
+              disabled={!selectedSupplier && prefix.length === 0}
+              onClick={() => {
+                if (selectedSupplier) setHistoryOpen(true);
+                else setPrefix([]);
+              }}
+              sx={{
+                position: "absolute",
+                top: 5,
+                left: 5,
+                minWidth: 44,
+                minHeight: 44,
+                border: "2px solid #8b6945",
+                color: "#3e2d1c",
+                backgroundColor: "#fffaf0",
+                visibility: selectedSupplier || prefix.length ? "visible" : "hidden",
+              }}
+            >
+              {selectedSupplier ? <HistoryOutlinedIcon /> : <ReplayOutlinedIcon />}
+            </IconButton>
+          </Box>
 
           {!selectedSupplier && (
             <>
@@ -539,18 +590,6 @@ export function PosWorkspace({
                       {supplier.displayName}
                     </Button>
                   ))}
-                </Stack>
-              )}
-              {prefix.length > 0 && (
-                <Stack direction="row" sx={{ justifyContent: "flex-start" }}>
-                  <Button
-                    type="button"
-                    size="small"
-                    startIcon={<ReplayOutlinedIcon />}
-                    onClick={() => setPrefix([])}
-                  >
-                    من البداية
-                  </Button>
                 </Stack>
               )}
               <Grid container spacing={1.25}>
@@ -586,34 +625,28 @@ export function PosWorkspace({
 
           {selectedSupplier && (
             <Stack spacing={1.5}>
-              <Stack direction="row" sx={{ justifyContent: "flex-end" }}>
-                <Button
-                  type="button"
-                  size="small"
-                  aria-label="آخر الحركات"
-                  startIcon={<HistoryOutlinedIcon />}
-                  onClick={() => setHistoryOpen(true)}
-                />
-              </Stack>
               {selectedSupplier.posInstruction && (
                 <Typography color="text.secondary">{selectedSupplier.posInstruction}</Typography>
               )}
               {!milkType ? (
-                <Grid container spacing={1.25}>
-                  {availableMilkTypes.map((type) => (
-                    <Grid key={type} size={{ xs: 6 }}>
+                <Stack spacing={1} sx={{ alignItems: "center", pt: 2 }}>
+                  <Typography color="text.secondary" sx={{ fontWeight: 700 }}>
+                    اختاري نوع اللبن
+                  </Typography>
+                  <Stack direction="row" spacing={1}>
+                    {availableMilkTypes.map((type) => (
                       <Button
+                        key={type}
                         type="button"
-                        fullWidth
                         variant="outlined"
                         onClick={() => setMilkType(type)}
-                        sx={{ ...vintageNameButtonSx, minHeight: 132 }}
+                        sx={{ minWidth: { xs: 118, sm: 156 }, minHeight: 62, fontWeight: 800 }}
                       >
                         {milkLabels[type]}
                       </Button>
-                    </Grid>
-                  ))}
-                </Grid>
+                    ))}
+                  </Stack>
+                </Stack>
               ) : (
                 <>
                   <Typography align="center" color="text.secondary" sx={{ fontWeight: 700 }}>
@@ -632,7 +665,7 @@ export function PosWorkspace({
                   />
                   {editingEntry && (
                     <Typography color="text.secondary" align="center">
-                      اضغط علامة الحفظ لتسجيل التعديل
+                      اضغط الاسم لتسجيل التعديل
                     </Typography>
                   )}
                 </>
@@ -652,22 +685,6 @@ export function PosWorkspace({
         <MoneyOffOutlinedIcon />
       </Fab>
       <Fab
-        aria-label="حفظ كمية اللبن"
-        disabled={!selectedSupplier || !milkType || !quantityUnits || busy}
-        onClick={saveMilk}
-        sx={{
-          position: "fixed",
-          bottom: 22,
-          left: "50%",
-          transform: "translateX(-50%)",
-          color: "#fff",
-          backgroundColor: "#7455c8",
-          "&:hover": { backgroundColor: "#6044ae" },
-        }}
-      >
-        <CheckRoundedIcon />
-      </Fab>
-      <Fab
         color="warning"
         aria-label="إنهاء الوردية"
         disabled={busy || data.shift.status !== "OPEN"}
@@ -681,11 +698,27 @@ export function PosWorkspace({
         <Box component="section" sx={{ minHeight: "100vh", p: { xs: 1.5, sm: 2 }, pb: 10 }}>
           <Stack spacing={1.25} sx={{ maxWidth: 760, mx: "auto" }}>
             <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-              <Paper variant="outlined" sx={{ flexGrow: 1, borderWidth: 2, p: 1 }}>
+              <Box
+                component="button"
+                type="button"
+                disabled={busy || cashPiasters <= 0}
+                onClick={saveCash}
+                aria-label="حفظ خصم النقد"
+                sx={{
+                  flexGrow: 1,
+                  border: 2,
+                  borderStyle: "solid",
+                  borderColor: "text.primary",
+                  borderRadius: 1,
+                  backgroundColor: "transparent",
+                  cursor: cashPiasters > 0 ? "pointer" : "default",
+                  "&:disabled": { color: "text.primary", opacity: 1 },
+                }}
+              >
                 <Typography component="h2" variant="h2" align="center">
                   {selectedSupplier?.displayName}
                 </Typography>
-              </Paper>
+              </Box>
               <Typography component="time" aria-label="الوقت الحالي" sx={{ fontWeight: 800 }}>
                 {cairoClock()}
               </Typography>
@@ -738,22 +771,6 @@ export function PosWorkspace({
               ))}
             </Grid>
           </Stack>
-          <Fab
-            aria-label="حفظ خصم النقد"
-            disabled={busy || cashPiasters <= 0}
-            onClick={saveCash}
-            sx={{
-              position: "fixed",
-              bottom: 22,
-              left: "50%",
-              transform: "translateX(-50%)",
-              color: "#fff",
-              backgroundColor: "#7455c8",
-              "&:hover": { backgroundColor: "#6044ae" },
-            }}
-          >
-            <CheckRoundedIcon />
-          </Fab>
           <Fab
             aria-label="العودة إلى اللبن"
             disabled={busy}
