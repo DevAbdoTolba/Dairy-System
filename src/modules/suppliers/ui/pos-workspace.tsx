@@ -71,7 +71,7 @@ const vintageNameButtonSx = {
 const vintageHeaderActionSx = {
   position: "absolute",
   top: 0,
-  width: "clamp(76px, 8vw, 132px)",
+  width: "clamp(64px, min(8vw, 16dvh), 132px)",
   minWidth: 0,
   height: "100%",
   minHeight: 0,
@@ -82,6 +82,12 @@ const vintageHeaderActionSx = {
   boxShadow: "3px 3px 0 #dac19b",
   "&:hover": { backgroundColor: "#f8eedc", boxShadow: "1px 1px 0 #dac19b" },
 };
+
+const viewportHeaderHeight = "clamp(78px, min(10vw, 12dvh), 120px)";
+const viewportHeaderNameSize = "clamp(1.7rem, min(4.4vw, 6dvh), 4rem)";
+const viewportHeaderIconSize = "clamp(2rem, min(3vw, 6dvh), 3rem)";
+const viewportCounterGap = "clamp(12px, 2.5dvh, 32px)";
+const viewportCounterSize = "clamp(44px, 5dvh, 64px)";
 
 function requestId() {
   return crypto.randomUUID();
@@ -149,6 +155,7 @@ export function PosWorkspace({
     (total, amount) => total + amount * cashCounts[amount] * 100,
     0,
   );
+  const cashTotalEgp = (cashPiasters / 100).toLocaleString("ar-EG");
   const historyItems = useMemo<HistoryItem[]>(() => {
     if (!data || !historyScope) return [];
     const supplierId = historyScope === "supplier" ? selectedSupplierId : null;
@@ -565,7 +572,14 @@ export function PosWorkspace({
   }
 
   return (
-    <Box component="section" sx={{ minHeight: "calc(100dvh - 48px)", pb: 10 }}>
+    <Box
+      component="section"
+      sx={{
+        minHeight: "calc(100dvh - 64px)",
+        height: selectedSupplier ? "calc(100dvh - 64px)" : undefined,
+        pb: selectedSupplier ? 0 : 10,
+      }}
+    >
       {error && (
         <Alert severity="error" sx={{ mb: 1 }}>
           {error}
@@ -577,11 +591,16 @@ export function PosWorkspace({
         sx={{
           p: selectedSupplier ? { xs: 0.5, sm: 1 } : { xs: 1.5, sm: 2 },
           minHeight: "calc(100dvh - 70px)",
+          height: selectedSupplier ? "100%" : undefined,
+          overflow: selectedSupplier ? "hidden" : undefined,
         }}
       >
         <Stack
           spacing={1.5}
-          sx={{ minHeight: selectedSupplier ? "calc(100dvh - 86px)" : undefined }}
+          sx={{
+            minHeight: selectedSupplier ? "calc(100dvh - 86px)" : undefined,
+            height: selectedSupplier ? "100%" : undefined,
+          }}
         >
           <Box sx={{ position: "relative" }}>
             <Box
@@ -595,12 +614,17 @@ export function PosWorkspace({
               sx={{
                 display: "block",
                 width: "100%",
-                minHeight: { xs: 78, sm: "clamp(88px, 10vw, 140px)" },
+                minHeight: viewportHeaderHeight,
                 border: "2px solid",
-                borderColor: selectedSupplier ? "primary.main" : "divider",
+                borderColor: editingEntry
+                  ? "#a85420"
+                  : selectedSupplier
+                    ? "primary.main"
+                    : "divider",
                 borderRadius: 1.25,
                 color: "text.primary",
-                backgroundColor: "transparent",
+                backgroundColor: editingEntry ? "#fff0df" : "transparent",
+                boxShadow: editingEntry ? "4px 4px 0 #e8b078" : undefined,
                 cursor: "pointer",
               }}
             >
@@ -611,7 +635,7 @@ export function PosWorkspace({
                   display: "block",
                   px: { xs: 11, sm: 14 },
                   py: 1,
-                  fontSize: "clamp(1.7rem, 4.4vw, 4rem)",
+                  fontSize: viewportHeaderNameSize,
                   fontWeight: 800,
                   lineHeight: 1.1,
                 }}
@@ -626,7 +650,7 @@ export function PosWorkspace({
                 onClick={finishSupplier}
                 sx={{ ...vintageHeaderActionSx, left: 0 }}
               >
-                <ReplayOutlinedIcon sx={{ fontSize: "clamp(2rem, 3vw, 3rem)" }} />
+                <ReplayOutlinedIcon sx={{ fontSize: viewportHeaderIconSize }} />
               </Button>
             )}
             {!selectedSupplier && prefix.length > 0 && (
@@ -636,7 +660,7 @@ export function PosWorkspace({
                 onClick={() => setPrefix([])}
                 sx={{ ...vintageHeaderActionSx, left: 0 }}
               >
-                <ReplayOutlinedIcon sx={{ fontSize: "clamp(2rem, 3vw, 3rem)" }} />
+                <ReplayOutlinedIcon sx={{ fontSize: viewportHeaderIconSize }} />
               </Button>
             )}
             <Button
@@ -645,7 +669,7 @@ export function PosWorkspace({
               onClick={() => setHistoryScope(selectedSupplier ? "supplier" : "shift")}
               sx={{ ...vintageHeaderActionSx, right: 0 }}
             >
-              <HistoryOutlinedIcon sx={{ fontSize: "clamp(2rem, 3vw, 3rem)" }} />
+              <HistoryOutlinedIcon sx={{ fontSize: viewportHeaderIconSize }} />
             </Button>
           </Box>
 
@@ -699,29 +723,15 @@ export function PosWorkspace({
           )}
 
           {selectedSupplier && (
-            <Stack spacing={1.5} sx={{ flexGrow: 1, justifyContent: "center", pb: "8vh" }}>
-              {editingEntry && (
-                <Box
-                  role="status"
-                  sx={{
-                    alignSelf: "center",
-                    width: "min(100%, 520px)",
-                    border: "2px solid #a85420",
-                    borderRadius: 1.25,
-                    backgroundColor: "#fff0df",
-                    color: "#7a3513",
-                    boxShadow: "3px 3px 0 #e8b078",
-                    px: 2,
-                    py: 1.25,
-                    textAlign: "center",
-                  }}
-                >
-                  <Typography sx={{ fontWeight: 900, fontSize: { xs: "1.15rem", sm: "1.35rem" } }}>
-                    تعديل تسجيل سابق
-                  </Typography>
-                  <Typography variant="body2">اضغطي اسم المورد لحفظ التعديل</Typography>
-                </Box>
-              )}
+            <Stack
+              spacing={1.5}
+              sx={{
+                flexGrow: 1,
+                minHeight: 0,
+                justifyContent: "center",
+                pb: "clamp(24px, 8dvh, 64px)",
+              }}
+            >
               {selectedSupplier.posInstruction && (
                 <Typography color="text.secondary">{selectedSupplier.posInstruction}</Typography>
               )}
@@ -759,6 +769,7 @@ export function PosWorkspace({
                     onRemoveCup={() => changeQuantity(-4)}
                     onAddQuarter={() => changeQuantity(1)}
                     onRemoveQuarter={() => changeQuantity(-1)}
+                    editing={Boolean(editingEntry)}
                   />
                 </>
               )}
@@ -787,8 +798,11 @@ export function PosWorkspace({
       </Fab>
 
       <Dialog open={cashOpen} onClose={() => !busy && setCashOpen(false)} fullScreen>
-        <Box component="section" sx={{ minHeight: "100dvh", p: { xs: 0.5, sm: 1 } }}>
-          <Stack spacing={1.5} sx={{ minHeight: "calc(100dvh - 16px)" }}>
+        <Box
+          component="section"
+          sx={{ height: "100dvh", p: { xs: 0.5, sm: 1 }, overflow: "hidden" }}
+        >
+          <Stack spacing={1.5} sx={{ height: "calc(100dvh - 16px)" }}>
             <Box sx={{ position: "relative" }}>
               <Box
                 component="button"
@@ -799,7 +813,7 @@ export function PosWorkspace({
                 sx={{
                   display: "block",
                   width: "100%",
-                  minHeight: { xs: 78, sm: "clamp(88px, 10vw, 140px)" },
+                  minHeight: "clamp(104px, min(12vw, 16dvh), 146px)",
                   border: "2px solid",
                   borderColor: "primary.main",
                   borderRadius: 1.25,
@@ -816,7 +830,7 @@ export function PosWorkspace({
                     display: "block",
                     px: { xs: 11, sm: 14 },
                     pt: 1,
-                    fontSize: "clamp(1.7rem, 4.4vw, 4rem)",
+                    fontSize: viewportHeaderNameSize,
                     fontWeight: 800,
                     lineHeight: 1.1,
                   }}
@@ -824,10 +838,22 @@ export function PosWorkspace({
                   {selectedSupplier?.displayName}
                 </Typography>
                 {milkType && (
-                  <Typography align="center" sx={{ pb: 1, fontWeight: 700 }}>
+                  <Typography align="center" sx={{ fontWeight: 700 }}>
                     {milkLabels[milkType]}
                   </Typography>
                 )}
+                <Typography
+                  component="output"
+                  align="center"
+                  sx={{
+                    display: "block",
+                    pb: 1,
+                    fontSize: "clamp(1.15rem, 2.5dvh, 2rem)",
+                    fontWeight: 900,
+                  }}
+                >
+                  {cashTotalEgp} ج
+                </Typography>
               </Box>
               <Button
                 type="button"
@@ -839,7 +865,7 @@ export function PosWorkspace({
                 }}
                 sx={{ ...vintageHeaderActionSx, left: 0 }}
               >
-                <ReplayOutlinedIcon sx={{ fontSize: "clamp(2rem, 3vw, 3rem)" }} />
+                <ReplayOutlinedIcon sx={{ fontSize: viewportHeaderIconSize }} />
               </Button>
               <Typography
                 component="time"
@@ -854,10 +880,17 @@ export function PosWorkspace({
                 <Typography align="center">{selectedSupplier.posInstruction}</Typography>
               </Paper>
             )}
-            <Stack sx={{ flexGrow: 1, justifyContent: "center", pb: "8vh" }}>
+            <Stack
+              sx={{
+                flexGrow: 1,
+                minHeight: 0,
+                justifyContent: "center",
+                pb: "clamp(16px, 5dvh, 40px)",
+              }}
+            >
               <Grid
                 container
-                spacing={{ xs: 1.25, sm: 2.5 }}
+                spacing={{ xs: 1, sm: 1.5 }}
                 sx={{ width: "min(100%, 1120px)", mx: "auto" }}
               >
                 {cashAmounts.map((amount) => (
@@ -868,7 +901,11 @@ export function PosWorkspace({
                   >
                     <Stack
                       spacing={0.5}
-                      sx={{ width: "min(29vw, 350px)", flex: "0 1 29vw", alignItems: "center" }}
+                      sx={{
+                        width: "min(29vw, 350px, 18dvh)",
+                        flex: "0 1 29vw",
+                        alignItems: "center",
+                      }}
                     >
                       <Button
                         type="button"
@@ -903,10 +940,10 @@ export function PosWorkspace({
                         }
                         aria-label={`إنقاص عدد فئة ${amount} جنيه`}
                         sx={{
-                          mt: "clamp(20px, 4vh, 52px)",
-                          minHeight: "clamp(44px, 5vw, 64px)",
-                          minWidth: "clamp(44px, 5vw, 64px)",
-                          fontSize: "clamp(1.65rem, 3vw, 2.6rem)",
+                          mt: viewportCounterGap,
+                          minHeight: viewportCounterSize,
+                          minWidth: viewportCounterSize,
+                          fontSize: "clamp(1.65rem, min(3vw, 5dvh), 2.6rem)",
                           fontWeight: 800,
                           color: "text.primary",
                         }}
@@ -1025,6 +1062,7 @@ function TapQuantity({
   onRemoveCup,
   onAddQuarter,
   onRemoveQuarter,
+  editing,
 }: {
   satls: number;
   cups: number;
@@ -1035,6 +1073,7 @@ function TapQuantity({
   onRemoveCup: () => void;
   onAddQuarter: () => void;
   onRemoveQuarter: () => void;
+  editing: boolean;
 }) {
   const rows = [
     { label: "السطل", value: satls, onAdd: onAddSatl, onRemove: onRemoveSatl },
@@ -1050,13 +1089,13 @@ function TapQuantity({
         width: "100%",
         justifyContent: "center",
         alignItems: "flex-start",
-        pt: "clamp(8px, 3vh, 32px)",
+        pt: "clamp(8px, 2.5dvh, 24px)",
       }}
     >
       {rows.map((row) => (
         <Stack
           key={row.label}
-          sx={{ width: "min(29vw, 350px)", flex: "0 1 29vw", alignItems: "center" }}
+          sx={{ width: "min(29vw, 350px, 34dvh)", flex: "0 1 29vw", alignItems: "center" }}
         >
           <Button
             type="button"
@@ -1067,11 +1106,12 @@ function TapQuantity({
               width: "100%",
               minWidth: 0,
               aspectRatio: "1",
-              fontSize: "clamp(1.1rem, 2.5vw, 2.2rem)",
+              fontSize: "clamp(1.1rem, min(2.5vw, 4dvh), 2.2rem)",
               fontWeight: 800,
               borderWidth: 3,
-              borderColor: "text.primary",
+              borderColor: editing ? "#a85420" : "text.primary",
               borderRadius: 1.25,
+              backgroundColor: editing ? "#fff0df" : "transparent",
             }}
           >
             {row.label}
@@ -1082,12 +1122,12 @@ function TapQuantity({
             onClick={row.onRemove}
             aria-label={`إنقاص ${row.label}`}
             sx={{
-              mt: "clamp(20px, 4vh, 52px)",
-              minHeight: "clamp(44px, 5vw, 64px)",
-              minWidth: "clamp(44px, 5vw, 64px)",
-              fontSize: "clamp(1.65rem, 3vw, 2.6rem)",
+              mt: viewportCounterGap,
+              minHeight: viewportCounterSize,
+              minWidth: viewportCounterSize,
+              fontSize: "clamp(1.65rem, min(3vw, 5dvh), 2.6rem)",
               fontWeight: 800,
-              color: "text.primary",
+              color: editing ? "#a85420" : "text.primary",
             }}
           >
             {row.value}
