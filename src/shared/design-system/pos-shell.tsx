@@ -49,7 +49,7 @@ export function PosShell({ children }: { children: React.ReactNode }) {
           type="button"
           size="small"
           onClick={leaveShiftWorkspace}
-          sx={{ position: "fixed", top: 6, left: 8, zIndex: 1, minHeight: 44 }}
+          sx={{ position: "fixed", top: "1vmin", left: "1vmin", zIndex: 1, minHeight: "5vmin" }}
         >
           مغادرة الوردية
         </Button>
@@ -57,11 +57,19 @@ export function PosShell({ children }: { children: React.ReactNode }) {
       <Typography
         component="time"
         aria-label="الوقت الحالي"
-        sx={{ display: "block", px: 2, pt: 1.25, textAlign: "right", fontWeight: 700 }}
+        sx={{
+          display: "block",
+          px: "2vmin",
+          pt: "1vmin",
+          fontSize: "2vmin",
+          lineHeight: 1.5,
+          textAlign: "right",
+          fontWeight: 700,
+        }}
       >
         {time}
       </Typography>
-      <Container component="main" maxWidth={false} sx={{ px: { xs: 1, sm: 2 }, pb: 2 }}>
+      <Container component="main" maxWidth={false} sx={{ px: "1vmin", pb: "1vmin" }}>
         {children}
       </Container>
     </Box>

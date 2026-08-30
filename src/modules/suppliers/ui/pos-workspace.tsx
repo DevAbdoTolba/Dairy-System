@@ -71,7 +71,7 @@ const vintageNameButtonSx = {
 const vintageHeaderActionSx = {
   position: "absolute",
   top: 0,
-  width: 88,
+  width: "8vmin",
   minWidth: 0,
   height: "100%",
   minHeight: 0,
@@ -83,9 +83,9 @@ const vintageHeaderActionSx = {
   "&:hover": { backgroundColor: "#f8eedc", boxShadow: "1px 1px 0 #dac19b" },
 };
 
-const staticHeaderNameSize = "3rem";
-const staticHeaderIconSize = "2.5rem";
-const staticCounterSize = 52;
+const staticHeaderNameSize = "5vmin";
+const staticHeaderIconSize = "3.8vmin";
+const staticCounterSize = "5vmin";
 
 function requestId() {
   return crypto.randomUUID();
@@ -573,8 +573,8 @@ export function PosWorkspace({
     <Box
       component="section"
       sx={{
-        minHeight: "calc(100dvh - 64px)",
-        height: selectedSupplier ? "calc(100dvh - 64px)" : undefined,
+        minHeight: "calc(100dvh - 5vmin)",
+        height: selectedSupplier ? "calc(100dvh - 5vmin)" : undefined,
         pb: selectedSupplier ? 0 : 10,
       }}
     >
@@ -587,17 +587,18 @@ export function PosWorkspace({
         component="section"
         aria-label="اختيار المورد"
         sx={{
-          p: selectedSupplier ? { xs: 0.5, sm: 1 } : { xs: 1.5, sm: 2 },
-          minHeight: "calc(100dvh - 70px)",
+          p: selectedSupplier ? "1vmin" : { xs: 1.5, sm: 2 },
+          minHeight: "calc(100dvh - 5vmin)",
           height: selectedSupplier ? "100%" : undefined,
           overflow: selectedSupplier ? "hidden" : undefined,
         }}
       >
         <Stack
-          spacing={1.5}
+          spacing={0}
           sx={{
-            minHeight: selectedSupplier ? "calc(100dvh - 86px)" : undefined,
+            minHeight: selectedSupplier ? "calc(100dvh - 5vmin)" : undefined,
             height: selectedSupplier ? "100%" : undefined,
+            gap: selectedSupplier ? "1vmin" : undefined,
           }}
         >
           <Box sx={{ position: "relative" }}>
@@ -612,7 +613,7 @@ export function PosWorkspace({
               sx={{
                 display: "block",
                 width: "100%",
-                height: 108,
+                height: "10vmin",
                 minHeight: 0,
                 border: "2px solid",
                 borderColor: editingEntry
@@ -632,8 +633,8 @@ export function PosWorkspace({
                 align="center"
                 sx={{
                   display: "block",
-                  px: 12,
-                  py: 1,
+                  px: "10vmin",
+                  py: "1vmin",
                   fontSize: staticHeaderNameSize,
                   fontWeight: 800,
                   lineHeight: 1.1,
@@ -731,7 +732,7 @@ export function PosWorkspace({
                 flexGrow: 1,
                 minHeight: 0,
                 justifyContent: "center",
-                pb: 8,
+                pb: "8vmin",
               }}
             >
               {selectedSupplier.posInstruction && (
@@ -785,7 +786,7 @@ export function PosWorkspace({
         aria-label="خصم نقد للمورد"
         disabled={!selectedSupplier || !milkType || busy || data.shift.status !== "OPEN"}
         onClick={() => setCashOpen(true)}
-        sx={{ position: "fixed", bottom: 22, right: 22 }}
+        sx={{ position: "fixed", bottom: "2vmin", right: "2vmin", width: "6vmin", height: "6vmin" }}
       >
         <MoneyOffOutlinedIcon />
       </Fab>
@@ -794,17 +795,14 @@ export function PosWorkspace({
         aria-label="إنهاء الوردية"
         disabled={busy || data.shift.status !== "OPEN"}
         onClick={closeShift}
-        sx={{ position: "fixed", bottom: 22, left: 22 }}
+        sx={{ position: "fixed", bottom: "2vmin", left: "2vmin", width: "6vmin", height: "6vmin" }}
       >
         <CloseOutlinedIcon />
       </Fab>
 
       <Dialog open={cashOpen} onClose={() => !busy && setCashOpen(false)} fullScreen>
-        <Box
-          component="section"
-          sx={{ height: "100dvh", p: { xs: 0.5, sm: 1 }, overflow: "hidden" }}
-        >
-          <Stack spacing={1.5} sx={{ height: "calc(100dvh - 16px)" }}>
+        <Box component="section" sx={{ height: "100dvh", p: "1vmin", overflow: "hidden" }}>
+          <Stack spacing={0} sx={{ height: "calc(100dvh - 2vmin)", gap: "1vmin" }}>
             <Box sx={{ position: "relative" }}>
               <Box
                 component="button"
@@ -815,7 +813,7 @@ export function PosWorkspace({
                 sx={{
                   display: "block",
                   width: "100%",
-                  height: 132,
+                  height: "15vmin",
                   minHeight: 0,
                   border: "2px solid",
                   borderColor: "primary.main",
@@ -831,8 +829,8 @@ export function PosWorkspace({
                   align="center"
                   sx={{
                     display: "block",
-                    px: 12,
-                    pt: 1,
+                    px: "10vmin",
+                    pt: "1vmin",
                     fontSize: staticHeaderNameSize,
                     fontWeight: 800,
                     lineHeight: 1.1,
@@ -844,7 +842,7 @@ export function PosWorkspace({
                   {selectedSupplier?.displayName}
                 </Typography>
                 {milkType && (
-                  <Typography align="center" sx={{ fontWeight: 700 }}>
+                  <Typography align="center" sx={{ fontSize: "2.4vmin", fontWeight: 700 }}>
                     {milkLabels[milkType]}
                   </Typography>
                 )}
@@ -853,8 +851,8 @@ export function PosWorkspace({
                   align="center"
                   sx={{
                     display: "block",
-                    pb: 1,
-                    fontSize: "1.4rem",
+                    pb: "1vmin",
+                    fontSize: "2.4vmin",
                     fontWeight: 900,
                   }}
                 >
@@ -876,7 +874,13 @@ export function PosWorkspace({
               <Typography
                 component="time"
                 aria-label="الوقت الحالي"
-                sx={{ position: "absolute", top: 9, right: 14, fontWeight: 800 }}
+                sx={{
+                  position: "absolute",
+                  top: "1vmin",
+                  right: "1.5vmin",
+                  fontSize: "2vmin",
+                  fontWeight: 800,
+                }}
               >
                 {cairoClock()}
               </Typography>
@@ -886,10 +890,10 @@ export function PosWorkspace({
                 <Typography align="center">{selectedSupplier.posInstruction}</Typography>
               </Paper>
             )}
-            <Stack sx={{ flexGrow: 1, minHeight: 0, pb: 2 }}>
+            <Stack sx={{ flexGrow: 1, minHeight: 0, pb: "2vmin" }}>
               <Grid
                 container
-                spacing={1.5}
+                spacing={0}
                 sx={{
                   width: "100%",
                   maxWidth: 960,
@@ -897,6 +901,7 @@ export function PosWorkspace({
                   minHeight: 0,
                   mx: "auto",
                   gridAutoRows: "minmax(0, 1fr)",
+                  gap: "1.5vmin",
                 }}
               >
                 {cashAmounts.map((amount) => (
@@ -925,11 +930,11 @@ export function PosWorkspace({
                             width: "auto",
                             height: "100%",
                             maxWidth: "100%",
-                            maxHeight: 300,
+                            maxHeight: "30vmin",
                             minWidth: 0,
                             aspectRatio: "1",
                             borderRadius: "50%",
-                            fontSize: "2rem",
+                            fontSize: "3.2vmin",
                             fontWeight: 800,
                             borderWidth: 3,
                             borderColor: "text.primary",
@@ -950,10 +955,10 @@ export function PosWorkspace({
                         }
                         aria-label={`إنقاص عدد فئة ${amount} جنيه`}
                         sx={{
-                          mt: 1,
+                          mt: "1vmin",
                           minHeight: staticCounterSize,
                           minWidth: staticCounterSize,
-                          fontSize: "2.25rem",
+                          fontSize: "3.6vmin",
                           fontWeight: 800,
                           color: "text.primary",
                         }}
@@ -1093,14 +1098,15 @@ function TapQuantity({
   return (
     <Stack
       direction="row"
-      spacing={{ xs: 1.25, sm: 2.5 }}
+      spacing={0}
       aria-label="الكمية"
       sx={{
         width: "100%",
         flexGrow: 1,
         minHeight: 0,
         alignItems: "stretch",
-        pt: 1,
+        gap: "2vmin",
+        pt: "1vmin",
       }}
     >
       {rows.map((row) => (
@@ -1127,10 +1133,10 @@ function TapQuantity({
                 width: "auto",
                 height: "100%",
                 maxWidth: "100%",
-                maxHeight: 350,
+                maxHeight: "30vmin",
                 minWidth: 0,
                 aspectRatio: "1",
-                fontSize: "1.8rem",
+                fontSize: "2.8vmin",
                 fontWeight: 800,
                 borderWidth: 3,
                 borderColor: editing ? "#a85420" : "text.primary",
@@ -1147,10 +1153,10 @@ function TapQuantity({
             onClick={row.onRemove}
             aria-label={`إنقاص ${row.label}`}
             sx={{
-              mt: 1,
+              mt: "1vmin",
               minHeight: staticCounterSize,
               minWidth: staticCounterSize,
-              fontSize: "2.25rem",
+              fontSize: "3.6vmin",
               fontWeight: 800,
               color: editing ? "#a85420" : "text.primary",
             }}
