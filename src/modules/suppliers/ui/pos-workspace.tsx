@@ -623,28 +623,49 @@ export function PosWorkspace({
                 {selectedSupplier?.displayName ?? (prefix.length ? prefix.join(" ") : " ")}
               </Typography>
             </Box>
-            <IconButton
-              type="button"
-              aria-label={selectedSupplier ? "آخر الحركات" : "إعادة اختيار الاسم"}
-              disabled={!selectedSupplier && prefix.length === 0}
-              onClick={() => {
-                if (selectedSupplier) setHistoryOpen(true);
-                else setPrefix([]);
-              }}
-              sx={{
-                position: "absolute",
-                top: 5,
-                left: 5,
-                minWidth: 44,
-                minHeight: 44,
-                border: "2px solid #8b6945",
-                color: "#3e2d1c",
-                backgroundColor: "#fffaf0",
-                visibility: selectedSupplier || prefix.length ? "visible" : "hidden",
-              }}
-            >
-              {selectedSupplier ? <HistoryOutlinedIcon /> : <ReplayOutlinedIcon />}
-            </IconButton>
+            {selectedSupplier && (
+              <IconButton
+                type="button"
+                aria-label="آخر الحركات"
+                onClick={() => setHistoryOpen(true)}
+                sx={{
+                  position: "absolute",
+                  top: 5,
+                  left: 5,
+                  minWidth: 44,
+                  minHeight: 44,
+                  border: "2px solid #8b6945",
+                  color: "#3e2d1c",
+                  backgroundColor: "#fffaf0",
+                }}
+              >
+                <HistoryOutlinedIcon />
+              </IconButton>
+            )}
+            {!selectedSupplier && prefix.length > 0 && (
+              <Button
+                type="button"
+                aria-label="إعادة اختيار الاسم"
+                onClick={() => setPrefix([])}
+                sx={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "clamp(80px, 7vw, 128px)",
+                  minWidth: 0,
+                  height: "100%",
+                  minHeight: 0,
+                  border: "2px solid #8b6945",
+                  borderRadius: 1.25,
+                  color: "#3e2d1c",
+                  backgroundColor: "#fffaf0",
+                  boxShadow: "3px 3px 0 #dac19b",
+                  "&:hover": { backgroundColor: "#f8eedc", boxShadow: "1px 1px 0 #dac19b" },
+                }}
+              >
+                <ReplayOutlinedIcon sx={{ fontSize: "clamp(2rem, 3vw, 3rem)" }} />
+              </Button>
+            )}
             {selectedSupplier && (
               <IconButton
                 type="button"
