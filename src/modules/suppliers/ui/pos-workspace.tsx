@@ -136,6 +136,11 @@ export function PosWorkspace({
       if (!response.ok) throw new Error(result.error ?? "تعذر تحميل بيانات الوردية.");
       if (result.posCredentialVersion)
         await invalidatePosVerifierIfVersionChanged(result.posCredentialVersion, credentialRole);
+      if (result.shift.status !== "OPEN") {
+        setData(null);
+        setError(null);
+        return;
+      }
       setData(result);
       await cachePosWorkspace(result);
     },
@@ -309,7 +314,9 @@ export function PosWorkspace({
       return;
     }
     if (data.shift.status !== "OPEN") {
-      setError("الوردية مغلقة.");
+      setData(null);
+      setError(null);
+      finishSupplier();
       return;
     }
     if (busy) return;

@@ -28,8 +28,10 @@ export function PosShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let enteredFullscreen = false;
     const updateFullscreenState = () => {
-      if (document.fullscreenElement) enteredFullscreen = true;
-      else if (enteredFullscreen) setHasLeftFullscreen(true);
+      if (document.fullscreenElement) {
+        enteredFullscreen = true;
+        setHasLeftFullscreen(false);
+      } else if (enteredFullscreen) setHasLeftFullscreen(true);
     };
     document.addEventListener("fullscreenchange", updateFullscreenState);
     return () => document.removeEventListener("fullscreenchange", updateFullscreenState);
