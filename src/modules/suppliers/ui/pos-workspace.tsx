@@ -633,7 +633,7 @@ export function PosWorkspace({
           sx={{
             minHeight: selectedSupplier ? "calc(100dvh - 5vmin)" : undefined,
             height: selectedSupplier ? "100%" : undefined,
-            gap: selectedSupplier ? "1vmin" : undefined,
+            gap: selectedSupplier ? "1vmin" : "2.5vmin",
           }}
         >
           <Box sx={{ position: "relative" }}>
@@ -714,7 +714,18 @@ export function PosWorkspace({
           {!selectedSupplier && (
             <>
               {data.suggestions.length > 0 && (
-                <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap" }}>
+                <Stack
+                  direction="row"
+                  spacing={0.75}
+                  sx={{
+                    overflowX: "auto",
+                    overflowY: "hidden",
+                    flexWrap: "nowrap",
+                    px: "0.5vmin",
+                    pb: "0.5vmin",
+                    scrollbarWidth: "thin",
+                  }}
+                >
                   {data.suggestions.map((supplier) => (
                     <Button
                       key={supplier.id}
@@ -722,7 +733,7 @@ export function PosWorkspace({
                       size="small"
                       variant="outlined"
                       onClick={() => selectSupplier(supplier.id)}
-                      sx={{ minHeight: 44 }}
+                      sx={{ minHeight: 44, flex: "0 0 auto" }}
                     >
                       {supplier.displayName}
                     </Button>
