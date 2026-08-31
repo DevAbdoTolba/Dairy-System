@@ -574,7 +574,9 @@ export function PosWorkspace({
         component="section"
         spacing={2}
         sx={{
-          minHeight: "calc(100vh - 64px)",
+          flex: 1,
+          minHeight: 0,
+          height: "100%",
           maxWidth: 560,
           mx: "auto",
           justifyContent: "center",
@@ -608,9 +610,13 @@ export function PosWorkspace({
     <Box
       component="section"
       sx={{
-        minHeight: "calc(100dvh - 5vmin)",
-        height: selectedSupplier ? "calc(100dvh - 5vmin)" : undefined,
-        pb: selectedSupplier ? 0 : 10,
+        flex: 1,
+        minWidth: 0,
+        minHeight: 0,
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
       }}
     >
       {error && (
@@ -623,20 +629,22 @@ export function PosWorkspace({
         aria-label="اختيار المورد"
         sx={{
           p: selectedSupplier ? "1vmin" : { xs: 1.5, sm: 2 },
-          minHeight: "calc(100dvh - 5vmin)",
-          height: selectedSupplier ? "100%" : undefined,
-          overflow: selectedSupplier ? "hidden" : undefined,
+          flex: 1,
+          minHeight: 0,
+          overflow: "hidden",
+          display: "flex",
         }}
       >
         <Stack
           spacing={0}
           sx={{
-            minHeight: selectedSupplier ? "calc(100dvh - 5vmin)" : undefined,
-            height: selectedSupplier ? "100%" : undefined,
+            flex: 1,
+            minWidth: 0,
+            minHeight: 0,
             gap: selectedSupplier ? "1vmin" : "2.5vmin",
           }}
         >
-          <Box sx={{ position: "relative" }}>
+          <Box sx={{ position: "relative", flexShrink: 0 }}>
             <Box
               component="button"
               type="button"
@@ -718,6 +726,7 @@ export function PosWorkspace({
                   direction="row"
                   spacing={0.75}
                   sx={{
+                    flexShrink: 0,
                     overflowX: "auto",
                     overflowY: "hidden",
                     flexWrap: "nowrap",
@@ -740,34 +749,46 @@ export function PosWorkspace({
                   ))}
                 </Stack>
               )}
-              <Grid container spacing={1.25}>
-                {nextTokens.map((token) => (
-                  <Grid key={token} size={{ xs: 6, sm: 4, md: 3 }}>
-                    <Button
-                      type="button"
-                      fullWidth
-                      onClick={() => chooseToken(token)}
-                      sx={vintageNameButtonSx}
-                    >
-                      {token}
-                    </Button>
-                  </Grid>
-                ))}
-                {matchingSuppliers.length > 1 &&
-                  nextTokens.length === 0 &&
-                  matchingSuppliers.map((supplier) => (
-                    <Grid key={supplier.id} size={{ xs: 6, sm: 4, md: 3 }}>
+              <Box
+                sx={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  scrollbarGutter: "stable",
+                  pr: "0.5vmin",
+                  pb: "0.5vmin",
+                }}
+              >
+                <Grid container spacing={1.25}>
+                  {nextTokens.map((token) => (
+                    <Grid key={token} size={{ xs: 6, sm: 4, md: 3 }}>
                       <Button
                         type="button"
                         fullWidth
-                        onClick={() => selectSupplier(supplier.id)}
+                        onClick={() => chooseToken(token)}
                         sx={vintageNameButtonSx}
                       >
-                        {supplier.displayName}
+                        {token}
                       </Button>
                     </Grid>
                   ))}
-              </Grid>
+                  {matchingSuppliers.length > 1 &&
+                    nextTokens.length === 0 &&
+                    matchingSuppliers.map((supplier) => (
+                      <Grid key={supplier.id} size={{ xs: 6, sm: 4, md: 3 }}>
+                        <Button
+                          type="button"
+                          fullWidth
+                          onClick={() => selectSupplier(supplier.id)}
+                          sx={vintageNameButtonSx}
+                        >
+                          {supplier.displayName}
+                        </Button>
+                      </Grid>
+                    ))}
+                </Grid>
+              </Box>
             </>
           )}
 

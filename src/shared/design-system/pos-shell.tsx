@@ -43,7 +43,7 @@ export function PosShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <Box sx={{ minHeight: "100vh" }}>
+    <Box sx={{ height: "100dvh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {hasLeftFullscreen && (
         <Button
           type="button"
@@ -69,7 +69,19 @@ export function PosShell({ children }: { children: React.ReactNode }) {
       >
         {time}
       </Typography>
-      <Container component="main" maxWidth={false} sx={{ px: "1vmin", pb: "1vmin" }}>
+      <Container
+        component="main"
+        maxWidth={false}
+        sx={{
+          display: "flex",
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          overflow: "hidden",
+          px: "1vmin",
+          pb: "1vmin",
+        }}
+      >
         {children}
       </Container>
     </Box>
