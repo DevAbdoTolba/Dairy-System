@@ -851,11 +851,7 @@ export function PosWorkspace({
           <Stack spacing={0} sx={{ height: "calc(100dvh - 4vmin)", gap: "2vmin" }}>
             <Box sx={{ position: "relative" }}>
               <Box
-                component="button"
-                type="button"
-                disabled={busy || !milkType || cashPiasters <= 0}
-                onClick={saveCash}
-                aria-label="حفظ خصم النقد"
+                component="header"
                 sx={{
                   display: "block",
                   width: "100%",
@@ -866,8 +862,6 @@ export function PosWorkspace({
                   borderRadius: 1.25,
                   color: "text.primary",
                   backgroundColor: "transparent",
-                  cursor: milkType && cashPiasters > 0 ? "pointer" : "default",
-                  "&:disabled": { color: "text.primary", opacity: 1 },
                 }}
               >
                 <Typography
@@ -912,6 +906,7 @@ export function PosWorkspace({
               sx={{
                 flexGrow: 1,
                 minHeight: 0,
+                position: "relative",
                 alignItems: "center",
                 justifyContent: "space-evenly",
               }}
@@ -1011,6 +1006,35 @@ export function PosWorkspace({
                   ←
                 </Button>
               </Box>
+              <Button
+                type="button"
+                disabled={busy || !milkType || cashPiasters <= 0}
+                onClick={saveCash}
+                sx={{
+                  position: { xs: "static", md: "absolute" },
+                  top: { md: "30%" },
+                  right: { md: "10vmin" },
+                  width: { xs: "min(100%, 42vmin)", md: "min(24vw, 42vmin)" },
+                  height: { md: "28vmin" },
+                  minHeight: { xs: "7vmin", md: "28vmin" },
+                  border: "2px solid",
+                  borderColor: "primary.main",
+                  borderRadius: 1.25,
+                  backgroundColor: "#fffaf0",
+                  color: "primary.main",
+                  fontSize: { xs: "2.5vmin", md: "4vmin" },
+                  fontWeight: 800,
+                  boxShadow: "4px 4px 0 #d6bc98",
+                  zIndex: 1,
+                  "&:disabled": {
+                    borderColor: "divider",
+                    color: "text.disabled",
+                    boxShadow: "none",
+                  },
+                }}
+              >
+                حفظ
+              </Button>
             </Stack>
           </Stack>
         </Box>
