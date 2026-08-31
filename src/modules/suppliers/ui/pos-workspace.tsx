@@ -806,18 +806,32 @@ export function PosWorkspace({
                 <Typography color="text.secondary">{selectedSupplier.posInstruction}</Typography>
               )}
               {!milkType ? (
-                <Stack spacing={1} sx={{ alignItems: "center", pt: 2 }}>
-                  <Typography color="text.secondary" sx={{ fontWeight: 700 }}>
+                <Stack
+                  spacing="2.5vmin"
+                  sx={{
+                    flexGrow: 1,
+                    minHeight: 0,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Typography color="text.secondary" sx={{ fontSize: "2.4vmin", fontWeight: 700 }}>
                     اختاري نوع اللبن
                   </Typography>
-                  <Stack direction="row" spacing={1}>
+                  <Stack direction="row" spacing="2vmin" sx={{ width: "min(100%, 80vmin)" }}>
                     {availableMilkTypes.map((type) => (
                       <Button
                         key={type}
                         type="button"
                         variant="outlined"
                         onClick={() => setMilkType(type)}
-                        sx={{ minWidth: { xs: 118, sm: 156 }, minHeight: 62, fontWeight: 800 }}
+                        sx={{
+                          ...vintageNameButtonSx,
+                          flex: 1,
+                          minWidth: 0,
+                          minHeight: "22vmin",
+                          fontSize: "3.5vmin",
+                        }}
                       >
                         {milkLabels[type]}
                       </Button>
