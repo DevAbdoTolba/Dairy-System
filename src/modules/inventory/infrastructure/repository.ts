@@ -346,69 +346,74 @@ export async function exportDatabase() {
   return { productVariants, inventoryTransactions, appSettings, ownerAccounts, loginAttempts };
 }
 
-export async function replaceDatabase(data: Awaited<ReturnType<typeof exportDatabase>>) {
-  await withMongoTransaction(async (session) => {
-    const db = await getDb();
-    const names = [
-      "productVariants",
-      "inventoryTransactions",
-      "appSettings",
-      "ownerAccounts",
-      "loginAttempts",
-      "inventoryBalances",
-    ] as const;
-    for (const name of names) await db.collection(name).deleteMany({}, { session });
-    if (data.productVariants.length)
-      await db
-        .collection<ProductVariantDocument>("productVariants")
-        .insertMany(data.productVariants, { session });
-    if (data.inventoryTransactions.length)
-      await db
-        .collection<InventoryTransactionDocument>("inventoryTransactions")
-        .insertMany(data.inventoryTransactions, { session });
-    if (data.appSettings.length)
-      await db
-        .collection<AppSettingsDocument>("appSettings")
-        .insertMany(data.appSettings, { session });
-    if (data.ownerAccounts.length)
-      await db.collection("ownerAccounts").insertMany(data.ownerAccounts, { session });
-    if (data.loginAttempts.length)
-      await db.collection("loginAttempts").insertMany(data.loginAttempts, { session });
-    const balances = await db
+export async function replaceInventoryDatabase(
+  data: Awaited<ReturnType<typeof exportDatabase>>,
+  session: ClientSession,
+) {
+  const db = await getDb();
+  const names = [
+    "productVariants",
+    "inventoryTransactions",
+    "appSettings",
+    "ownerAccounts",
+    "loginAttempts",
+    "inventoryBalances",
+  ] as const;
+  for (const name of names) await db.collection(name).deleteMany({}, { session });
+  if (data.productVariants.length)
+    await db
+      .collection<ProductVariantDocument>("productVariants")
+      .insertMany(data.productVariants, { session });
+  if (data.inventoryTransactions.length)
+    await db
       .collection<InventoryTransactionDocument>("inventoryTransactions")
-      .aggregate<{ _id: string; stock: number }>(
-        [
-          { $match: { status: "ACTIVE" } },
-          {
-            $group: {
-              _id: "$productVariantId",
-              stock: {
-                $sum: {
-                  $cond: [
-                    { $in: ["$type", ["SALE", "ADJUSTMENT_OUT"]] },
-                    { $multiply: ["$quantity", -1] },
-                    "$quantity",
-                  ],
-                },
+      .insertMany(data.inventoryTransactions, { session });
+  if (data.appSettings.length)
+    await db
+      .collection<AppSettingsDocument>("appSettings")
+      .insertMany(data.appSettings, { session });
+  if (data.ownerAccounts.length)
+    await db.collection("ownerAccounts").insertMany(data.ownerAccounts, { session });
+  if (data.loginAttempts.length)
+    await db.collection("loginAttempts").insertMany(data.loginAttempts, { session });
+  const balances = await db
+    .collection<InventoryTransactionDocument>("inventoryTransactions")
+    .aggregate<{ _id: string; stock: number }>(
+      [
+        { $match: { status: "ACTIVE" } },
+        {
+          $group: {
+            _id: "$productVariantId",
+            stock: {
+              $sum: {
+                $cond: [
+                  { $in: ["$type", ["SALE", "ADJUSTMENT_OUT"]] },
+                  { $multiply: ["$quantity", -1] },
+                  "$quantity",
+                ],
               },
             },
           },
-        ],
-        { session },
-      )
-      .toArray();
-    const allVariants = await db
-      .collection<ProductVariantDocument>("productVariants")
-      .find({}, { session })
-      .toArray();
-    if (allVariants.length) {
-      await db.collection<InventoryBalanceDocument>("inventoryBalances").insertMany(
-        allVariants.map((variant) => ({
-          _id: variant._id,
-          stock: balances.find((balance) => balance._id === variant._id)?.stock ?? 0,
-        })),
-        { session },
-      );
-    }
-  });
+        },
+      ],
+      { session },
+    )
+    .toArray();
+  const allVariants = await db
+    .collection<ProductVariantDocument>("productVariants")
+    .find({}, { session })
+    .toArray();
+  if (allVariants.length) {
+    await db.collection<InventoryBalanceDocument>("inventoryBalances").insertMany(
+      allVariants.map((variant) => ({
+        _id: variant._id,
+        stock: balances.find((balance) => balance._id === variant._id)?.stock ?? 0,
+      })),
+      { session },
+    );
+  }
+}
+
+export async function replaceDatabase(data: Awaited<ReturnType<typeof exportDatabase>>) {
+  await withMongoTransaction((session) => replaceInventoryDatabase(data, session));
 }

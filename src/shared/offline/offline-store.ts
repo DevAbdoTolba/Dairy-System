@@ -5,6 +5,9 @@ import {
   OFFLINE_DATABASE_NAME,
   OFFLINE_DATABASE_VERSION,
   OFFLINE_QUEUE_EVENT,
+  OFFLINE_SUPPLIER_CACHE_STORE,
+  OFFLINE_SUPPLIER_OUTBOX_STORE,
+  OFFLINE_SUPPLIER_SNAPSHOT_STORE,
   OFFLINE_TRANSACTION_STORE,
   type OfflineTransactionInput,
   type QueuedTransaction,
@@ -27,7 +30,7 @@ function transactionFinished(transaction: IDBTransaction) {
   });
 }
 
-function openOfflineDatabase() {
+export function openOfflineDatabase() {
   if (databasePromise) return databasePromise;
   databasePromise = new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(OFFLINE_DATABASE_NAME, OFFLINE_DATABASE_VERSION);
@@ -39,6 +42,17 @@ function openOfflineDatabase() {
         });
         store.createIndex("createdAt", "createdAt", { unique: false });
         store.createIndex("state", "state", { unique: false });
+      }
+      if (!database.objectStoreNames.contains(OFFLINE_SUPPLIER_OUTBOX_STORE)) {
+        const store = database.createObjectStore(OFFLINE_SUPPLIER_OUTBOX_STORE, { keyPath: "id" });
+        store.createIndex("createdAt", "createdAt", { unique: false });
+        store.createIndex("state", "state", { unique: false });
+      }
+      if (!database.objectStoreNames.contains(OFFLINE_SUPPLIER_CACHE_STORE)) {
+        database.createObjectStore(OFFLINE_SUPPLIER_CACHE_STORE, { keyPath: "id" });
+      }
+      if (!database.objectStoreNames.contains(OFFLINE_SUPPLIER_SNAPSHOT_STORE)) {
+        database.createObjectStore(OFFLINE_SUPPLIER_SNAPSHOT_STORE, { keyPath: "id" });
       }
     });
     request.addEventListener("success", () => resolve(request.result), { once: true });

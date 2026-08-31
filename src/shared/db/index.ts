@@ -56,6 +56,50 @@ async function prepareDatabase() {
       .collection<StoredDocument>("inventoryTransactions")
       .createIndex({ productVariantId: 1, status: 1 }),
     db.collection<StoredDocument>("loginAttempts").createIndex({ lockedUntil: 1 }),
+    db.collection<StoredDocument>("suppliers").createIndex({ active: 1, sortOrder: 1, sortKey: 1 }),
+    db
+      .collection<StoredDocument>("supplierShifts")
+      .createIndex({ businessDate: 1, type: 1 }, { unique: true, name: "shift_date_type_unique" }),
+    db.collection<StoredDocument>("supplierShifts").createIndex({ status: 1, businessDate: -1 }),
+    db.collection<StoredDocument>("supplierMilkEntries").createIndex({ shiftId: 1, createdAt: 1 }),
+    db
+      .collection<StoredDocument>("supplierMilkEntries")
+      .createIndex({ supplierId: 1, milkType: 1, businessDate: -1 }),
+    db
+      .collection<StoredDocument>("supplierMilkPrices")
+      .createIndex(
+        { milkType: 1, effectiveFrom: 1 },
+        { unique: true, name: "milk_price_type_date_unique" },
+      ),
+    db
+      .collection<StoredDocument>("supplierMilkPrices")
+      .createIndex({ milkType: 1, effectiveFrom: -1 }),
+    db
+      .collection<StoredDocument>("supplierAccountMovements")
+      .createIndex({ supplierId: 1, milkType: 1, businessDate: -1, createdAt: -1 }),
+    db
+      .collection<StoredDocument>("supplierAccountMovements")
+      .createIndex({ ownerReviewStatus: 1, createdAt: -1 }),
+    db.collection<StoredDocument>("supplierAccountMovements").createIndex({ settlementId: 1 }),
+    db.collection<StoredDocument>("supplierMilkEntries").createIndex({ settlementId: 1 }),
+    db.collection<StoredDocument>("supplierRepaymentInstructions").createIndex({ updatedAt: -1 }),
+    db
+      .collection<StoredDocument>("supplierSettlements")
+      .createIndex({ supplierId: 1, milkType: 1, createdAt: -1 }),
+    db
+      .collection<StoredDocument>("supplierSettlements")
+      .createIndex({ paymentMovementId: 1 }, { unique: true, sparse: true }),
+    db.collection<StoredDocument>("appIntegrations").createIndex({ updatedAt: -1 }),
+    db
+      .collection<StoredDocument>("backupJobs")
+      .createIndex(
+        { kind: 1, artifactId: 1 },
+        { unique: true, name: "backup_kind_artifact_unique" },
+      ),
+    db.collection<StoredDocument>("backupJobs").createIndex({ status: 1, nextAttemptAt: 1 }),
+    db
+      .collection<StoredDocument>("supplierEvents")
+      .createIndex({ aggregateType: 1, aggregateId: 1, createdAt: 1 }),
   ]);
 
   await db.collection<StoredDocument>("appSettings").updateOne(

@@ -9,6 +9,23 @@ describe("backup validation", () => {
   it("rejects a file that is not a Dairy MongoDB export", () => {
     expect(() => validateBackup({ format: "sqlite" })).toThrow();
   });
+
+  it("accepts the legacy version-1 inventory-only format", () => {
+    expect(
+      validateBackup({
+        format: "dairy-mongodb-export",
+        version: 1,
+        exportedAt: "2026-08-29T00:00:00.000Z",
+        data: {
+          productVariants: [],
+          inventoryTransactions: [],
+          appSettings: [],
+          ownerAccounts: [],
+          loginAttempts: [],
+        },
+      }).version,
+    ).toBe(1);
+  });
 });
 
 describeMongo("MongoDB backup", () => {
@@ -29,6 +46,7 @@ describeMongo("MongoDB backup", () => {
     const { createBackup } = await import("./backup");
     const backup = await createBackup();
     expect(validateBackup(backup).format).toBe("dairy-mongodb-export");
-    expect(backup.data.productVariants).toHaveLength(4);
+    expect(backup.version).toBe(2);
+    expect(backup.data.inventory.productVariants).toHaveLength(4);
   });
 });

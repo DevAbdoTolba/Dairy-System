@@ -1,10 +1,13 @@
-const VERSION = "v3";
+const VERSION = "v4";
 const SHELL_CACHE = `dairy-shell-${VERSION}`;
 const PAGE_CACHE = `dairy-pages-${VERSION}`;
 const STATIC_CACHE = `dairy-static-${VERSION}`;
 const OFFLINE_DATABASE_NAME = "dairy-offline";
-const OFFLINE_DATABASE_VERSION = 1;
+const OFFLINE_DATABASE_VERSION = 2;
 const OFFLINE_TRANSACTION_STORE = "transactions";
+const OFFLINE_SUPPLIER_OUTBOX_STORE = "supplier-outbox";
+const OFFLINE_SUPPLIER_CACHE_STORE = "supplier-cache";
+const OFFLINE_SUPPLIER_SNAPSHOT_STORE = "supplier-snapshots";
 const SYNC_TAG = "dairy-transaction-sync";
 const APP_CACHES = [SHELL_CACHE, PAGE_CACHE, STATIC_CACHE];
 
@@ -60,6 +63,17 @@ function openOfflineDatabase() {
         });
         store.createIndex("createdAt", "createdAt", { unique: false });
         store.createIndex("state", "state", { unique: false });
+      }
+      if (!database.objectStoreNames.contains(OFFLINE_SUPPLIER_OUTBOX_STORE)) {
+        const store = database.createObjectStore(OFFLINE_SUPPLIER_OUTBOX_STORE, { keyPath: "id" });
+        store.createIndex("createdAt", "createdAt", { unique: false });
+        store.createIndex("state", "state", { unique: false });
+      }
+      if (!database.objectStoreNames.contains(OFFLINE_SUPPLIER_CACHE_STORE)) {
+        database.createObjectStore(OFFLINE_SUPPLIER_CACHE_STORE, { keyPath: "id" });
+      }
+      if (!database.objectStoreNames.contains(OFFLINE_SUPPLIER_SNAPSHOT_STORE)) {
+        database.createObjectStore(OFFLINE_SUPPLIER_SNAPSHOT_STORE, { keyPath: "id" });
       }
     });
     request.addEventListener("success", () => resolve(request.result), { once: true });
@@ -216,6 +230,86 @@ async function flushOutbox() {
   return synced;
 }
 
+async function listSupplierOutbox() {
+  const database = await openOfflineDatabase();
+  const transaction = database.transaction(OFFLINE_SUPPLIER_OUTBOX_STORE, "readonly");
+  const entries = await requestResult(
+    transaction.objectStore(OFFLINE_SUPPLIER_OUTBOX_STORE).getAll(),
+  );
+  await transactionFinished(transaction);
+  database.close();
+  return entries.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+}
+
+async function removeSupplierOutbox(id) {
+  const database = await openOfflineDatabase();
+  const transaction = database.transaction(OFFLINE_SUPPLIER_OUTBOX_STORE, "readwrite");
+  transaction.objectStore(OFFLINE_SUPPLIER_OUTBOX_STORE).delete(id);
+  await transactionFinished(transaction);
+  database.close();
+}
+
+async function failSupplierOutbox(entry, message) {
+  const database = await openOfflineDatabase();
+  const transaction = database.transaction(OFFLINE_SUPPLIER_OUTBOX_STORE, "readwrite");
+  transaction.objectStore(OFFLINE_SUPPLIER_OUTBOX_STORE).put({
+    ...entry,
+    attempts: entry.attempts + 1,
+    state: "failed",
+    lastError: message,
+  });
+  await transactionFinished(transaction);
+  database.close();
+}
+
+async function flushSupplierOutbox() {
+  const entries = (await listSupplierOutbox()).filter((entry) => entry.state === "pending");
+  let synced = 0;
+  for (const entry of entries) {
+    let response;
+    try {
+      response = await fetch(entry.endpoint, {
+        method: entry.method,
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify(entry.payload),
+      });
+    } catch (error) {
+      throw error;
+    }
+    if (response.ok) {
+      await removeSupplierOutbox(entry.id);
+      synced += 1;
+      continue;
+    }
+    if (temporaryFailure(response.status))
+      throw new Error("Temporary supplier synchronization failure");
+    let body = {};
+    try {
+      body = await response.json();
+    } catch {
+      // A readable fallback is stored below.
+    }
+    await failSupplierOutbox(
+      entry,
+      response.status === 403
+        ? "انتهت جلسة الدخول. ادخل من جديد ثم أعد المحاولة."
+        : (body.error ?? "رفض الخادم عملية المورد."),
+    );
+  }
+  await broadcast({
+    type: synced > 0 ? "SUPPLIER_OUTBOX_SYNCED" : "SUPPLIER_OUTBOX_UPDATED",
+    count: synced,
+  });
+  if (synced > 0) {
+    await notify("اكتملت مزامنة استلام اللبن", {
+      body: `تم رفع ${synced} عملية محفوظة إلى قاعدة البيانات.`,
+      tag: "dairy-supplier-sync-complete",
+    });
+  }
+  return synced;
+}
+
 async function cacheStatic(request) {
   const cache = await caches.open(STATIC_CACHE);
   const cached = await cache.match(request);
@@ -227,7 +321,15 @@ async function cacheStatic(request) {
 
 async function cachePrivateRoutes() {
   const cache = await caches.open(PAGE_CACHE);
-  const routes = ["/dashboard", "/inventory", "/history", "/reports", "/settings"];
+  const routes = [
+    "/dashboard",
+    "/inventory",
+    "/history",
+    "/reports",
+    "/settings",
+    "/suppliers",
+    "/pos",
+  ];
   await Promise.all(
     routes.map(async (route) => {
       try {
@@ -282,12 +384,15 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("sync", (event) => {
-  if (event.tag === SYNC_TAG) event.waitUntil(flushOutbox());
+  if (event.tag === SYNC_TAG)
+    event.waitUntil(Promise.allSettled([flushOutbox(), flushSupplierOutbox()]));
 });
 
 self.addEventListener("message", (event) => {
   if (event.data?.type === "FLUSH_OUTBOX") {
-    event.waitUntil(flushOutbox().catch(() => undefined));
+    event.waitUntil(
+      Promise.allSettled([flushOutbox(), flushSupplierOutbox()]).then(() => undefined),
+    );
   }
   if (event.data?.type === "SHOW_NOTIFICATION") {
     event.waitUntil(

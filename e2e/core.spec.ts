@@ -7,6 +7,18 @@ async function login(page: import("@playwright/test").Page) {
   await page.getByRole("button", { name: "دخول" }).click();
   await expect(page).toHaveURL(/dashboard/);
 }
+
+test("owner switches between cheese administration and milk collection mode", async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole("link", { name: "الموردون" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "وضع اللبن" }).click();
+  await page.getByRole("menuitem", { name: "استلام اللبن — وضع المدير" }).click();
+  await expect(page).toHaveURL(/\/pos/);
+  await expect(page.getByRole("button", { name: "صباحية" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "مسائية" })).toBeVisible();
+});
+
 test("owner can record production, sale and return while protecting stock", async ({
   page,
 }, testInfo) => {
@@ -61,4 +73,15 @@ test("core login page is RTL and has no serious accessibility violations", async
       (violation) => violation.impact === "serious" || violation.impact === "critical",
     ),
   ).toEqual([]);
+});
+
+test("POS enters its dedicated workspace without owner navigation", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByRole("radio", { name: "استلام اللبن" }).check();
+  await page.getByLabel("رمز استلام اللبن").fill("123456");
+  await page.getByRole("button", { name: "دخول" }).click();
+  await expect(page).toHaveURL(/\/pos/);
+  await expect(page.getByRole("button", { name: "صباحية" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "مسائية" })).toBeVisible();
+  await expect(page.getByRole("navigation")).toHaveCount(0);
 });

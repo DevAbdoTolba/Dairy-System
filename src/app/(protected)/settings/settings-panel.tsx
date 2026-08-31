@@ -12,6 +12,7 @@ import Typography from "@mui/material/Typography";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { ProductVariant } from "@/modules/inventory";
+import { DriveBackupControls } from "./drive-backup-controls";
 
 export function SettingsPanel({
   settings,
@@ -27,6 +28,7 @@ export function SettingsPanel({
   const [error, setError] = useState<string | null>(null);
   const [newWeight, setNewWeight] = useState(0);
   const [newName, setNewName] = useState("");
+  const [posPin, setPosPin] = useState("");
   async function save() {
     setError(null);
     const response = await fetch("/api/settings", {
@@ -77,6 +79,21 @@ export function SettingsPanel({
     setMessage("تمت إضافة فئة الوزن.");
     router.refresh();
   }
+  async function savePosPin() {
+    setError(null);
+    const response = await fetch("/api/auth/pos-pin", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin: posPin }),
+    });
+    const result = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      setError(result.error ?? "تعذر تغيير رمز استلام اللبن.");
+      return;
+    }
+    setPosPin("");
+    setMessage("تم تغيير رمز استلام اللبن. ستنتهي جلسات الاستلام الحالية عند اتصالها.");
+  }
   async function archive(id: string) {
     if (!window.confirm("إيقاف هذه الفئة؟ لن تُحذف الحركات السابقة.")) return;
     const response = await fetch(`/api/variants/${id}`, { method: "DELETE" });
@@ -98,6 +115,36 @@ export function SettingsPanel({
           {message}
         </Alert>
       )}
+      <Card>
+        <CardContent>
+          <Stack spacing={2}>
+            <Typography component="h2" variant="h2">
+              رمز استلام اللبن
+            </Typography>
+            <Typography color="text.secondary">
+              تستخدمه العاملات للدخول إلى شاشة الاستلام فقط، ولا يمنح وصولاً إلى الحسابات أو
+              التقارير.
+            </Typography>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+              <TextField
+                label="رمز جديد لاستلام اللبن"
+                type="password"
+                value={posPin}
+                onChange={(event) => setPosPin(event.target.value)}
+                slotProps={{ htmlInput: { inputMode: "numeric", minLength: 6 } }}
+              />
+              <Button
+                type="button"
+                variant="contained"
+                disabled={posPin.length < 6}
+                onClick={savePosPin}
+              >
+                تغيير الرمز
+              </Button>
+            </Stack>
+          </Stack>
+        </CardContent>
+      </Card>
       <Card>
         <CardContent>
           <Stack spacing={2}>
@@ -177,6 +224,7 @@ export function SettingsPanel({
             <Typography color="text.secondary">
               ينشئ النظام نسخة متسقة من قاعدة البيانات ويجري فحص سلامتها قبل تنزيلها.
             </Typography>
+            <DriveBackupControls />
             <Button type="button" variant="contained" onClick={backup}>
               إنشاء نسخة احتياطية
             </Button>
