@@ -47,6 +47,7 @@ type SupplierEventDocument = {
   result: unknown;
   createdAt: string;
 };
+export type SupplierEventLog = Omit<SupplierEventDocument, "_id"> & { id: string };
 
 function accountMilkTypeFilter(milkType: MilkType): Filter<AccountMovementDocument> {
   return milkType === "COW"
@@ -434,6 +435,20 @@ export async function getSupplierEvent(commandId: string, options: Options = {})
 export async function insertSupplierEvent(event: SupplierEventDocument, options: Options = {}) {
   const db = await getDb();
   await db.collection<SupplierEventDocument>("supplierEvents").insertOne(event, options);
+}
+
+export async function listSupplierEvents(
+  kinds: string[],
+  limit = 100,
+): Promise<SupplierEventLog[]> {
+  const db = await getDb();
+  const events = await db
+    .collection<SupplierEventDocument>("supplierEvents")
+    .find({ kind: { $in: kinds } })
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(limit)
+    .toArray();
+  return events.map(({ _id, ...event }) => ({ id: _id, ...event }));
 }
 
 export async function listMilkPrices(options: Options = {}): Promise<MilkPricePeriod[]> {

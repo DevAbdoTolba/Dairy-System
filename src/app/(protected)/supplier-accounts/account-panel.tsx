@@ -14,6 +14,7 @@ import Typography from "@mui/material/Typography";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { formatPiasters } from "@/modules/suppliers/domain/money";
+import type { CashInputAudit } from "@/modules/suppliers/application/account-service";
 import type { Supplier, SupplierAccountMovement } from "@/modules/suppliers";
 import type { MilkType } from "@/modules/suppliers/domain/shift";
 
@@ -57,12 +58,20 @@ const movementLabels: Record<SupplierAccountMovement["type"], string> = {
   MANUAL_DEBIT: "خصم رصيد",
 };
 
+function cashInputActionLabel(action: CashInputAudit["inputActions"][number]) {
+  if (action.kind === "RECOMMENDATION") return `اقتراح ${action.amountEgp}`;
+  if (action.kind === "DIGIT") return action.digit;
+  return "←";
+}
+
 export function AccountPanel({
   accounts,
   pendingCash,
+  cashInputAudits,
 }: {
   accounts: AccountSummary[];
   pendingCash: SupplierAccountMovement[];
+  cashInputAudits: CashInputAudit[];
 }) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState(accounts[0]?.id ?? "");
@@ -90,6 +99,17 @@ export function AccountPanel({
     }
     return [...groups.values()];
   }, [accounts]);
+  const recommendationTotals = useMemo(
+    () =>
+      [50, 100, 200].map((amountEgp) => ({
+        amountEgp,
+        count: cashInputAudits
+          .flatMap((audit) => audit.inputActions)
+          .filter((action) => action.kind === "RECOMMENDATION" && action.amountEgp === amountEgp)
+          .length,
+      })),
+    [cashInputAudits],
+  );
 
   async function payload(response: Response) {
     return (await response.json()) as { error?: string };
@@ -216,6 +236,47 @@ export function AccountPanel({
             ))}
             {pendingCash.length === 0 && (
               <Typography color="text.secondary">لا توجد حركة نقد معلقة.</Typography>
+            )}
+          </Stack>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent>
+          <Stack spacing={1.25}>
+            <Typography component="h2" variant="h2">
+              سجل مساعدة إدخال النقد
+            </Typography>
+            <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap" }}>
+              {recommendationTotals.map(({ amountEgp, count }) => (
+                <Chip key={amountEgp} label={`${amountEgp}: ${count}`} variant="outlined" />
+              ))}
+            </Stack>
+            {cashInputAudits.map((audit) => {
+              const supplier = accounts.find(
+                (account) =>
+                  account.supplier.id === audit.supplierId && account.milkType === audit.milkType,
+              )?.supplier;
+              return (
+                <Stack
+                  key={audit.id}
+                  spacing={0.25}
+                  sx={{ p: 1, border: 1, borderColor: "divider", borderRadius: 1 }}
+                >
+                  <Typography sx={{ fontWeight: 800 }}>
+                    {supplier?.displayName ?? "مورد"} · {milkLabels[audit.milkType]}
+                    {audit.amountPiasters
+                      ? ` · ${formatPiasters(audit.amountPiasters)}`
+                      : " · لم يحفظ"}
+                  </Typography>
+                  <Typography color="text.secondary" variant="body2" dir="rtl">
+                    {audit.inputActions.map(cashInputActionLabel).join(" · ")}
+                    {audit.outcome === "SAVED" ? " · حفظ" : " · رجوع"}
+                  </Typography>
+                </Stack>
+              );
+            })}
+            {cashInputAudits.length === 0 && (
+              <Typography color="text.secondary">لا توجد عمليات إدخال نقد مسجلة بعد.</Typography>
             )}
           </Stack>
         </CardContent>

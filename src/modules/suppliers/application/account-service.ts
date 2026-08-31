@@ -27,6 +27,7 @@ import {
   listAccountMovements,
   listMilkEntriesForSupplier,
   listMilkPrices,
+  listSupplierEvents,
   listSuppliers,
   markAccountMovementReviewed,
   upsertMilkPrice,
@@ -40,12 +41,26 @@ const priceSchema = commandSchema.extend({
   effectiveFrom: z.string().refine(isIsoDate, "التاريخ غير صحيح."),
   pricePiastersPerSatl: z.number().int().positive().max(10_000_000),
 });
+const cashInputActionSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("RECOMMENDATION"),
+    amountEgp: z.number().int().positive().max(1_000_000),
+  }),
+  z.object({ kind: z.literal("DIGIT"), digit: z.string().regex(/^\d$/) }),
+  z.object({ kind: z.literal("BACKSPACE") }),
+]);
 const cashSchema = commandSchema.extend({
   movementId: z.string().uuid(),
   supplierId: z.string().uuid(),
   milkType: z.enum(milkTypes),
   amountPiasters: z.number().int().positive().max(100_000_000),
   note: z.string().trim().max(500).optional().default(""),
+  inputActions: z.array(cashInputActionSchema).max(32).optional().default([]),
+});
+const cashInputSessionSchema = commandSchema.extend({
+  supplierId: z.string().uuid(),
+  milkType: z.enum(milkTypes),
+  inputActions: z.array(cashInputActionSchema).min(1).max(32),
 });
 const ownerMovementSchema = commandSchema.extend({
   movementId: z.string().uuid(),
@@ -67,6 +82,7 @@ const repaymentInstructionSchema = commandSchema.extend({
 
 export type SetMilkPriceInput = z.input<typeof priceSchema>;
 export type RecordShiftCashInput = z.input<typeof cashSchema>;
+export type RecordShiftCashInputSession = z.input<typeof cashInputSessionSchema>;
 export type RecordOwnerMovementInput = z.input<typeof ownerMovementSchema>;
 export type ReviewPosCashInput = z.input<typeof reviewSchema>;
 export type SetRepaymentInstructionInput = z.input<typeof repaymentInstructionSchema>;
@@ -79,6 +95,30 @@ export type AccountMilkLine = {
   price: MilkPricePeriod | null;
   valuePiasters: number | null;
 };
+
+export type CashInputAudit = {
+  id: string;
+  supplierId: string;
+  milkType: MilkType;
+  amountPiasters: number | null;
+  outcome: "SAVED" | "CANCELLED";
+  inputActions: z.output<typeof cashInputActionSchema>[];
+  createdAt: string;
+};
+
+const recordedCashInputResultSchema = z.object({
+  movement: z.object({
+    supplierId: z.string().uuid(),
+    milkType: z.enum(milkTypes),
+    amountPiasters: z.number().int().positive(),
+  }),
+  inputActions: z.array(cashInputActionSchema).min(1),
+});
+const cancelledCashInputResultSchema = z.object({
+  supplierId: z.string().uuid(),
+  milkType: z.enum(milkTypes),
+  inputActions: z.array(cashInputActionSchema).min(1),
+});
 
 function optionalNote(value: string) {
   return value || null;
@@ -155,10 +195,38 @@ export async function recordShiftCash(
         createdAt: new Date().toISOString(),
       };
       await insertAccountMovement(movement, { session });
-      return { movement };
+      return { movement, inputActions: input.inputActions };
     },
   );
   return { movement: result.value.movement, duplicate: result.duplicate };
+}
+
+export async function recordShiftCashInputSession(
+  shiftId: string,
+  rawInput: RecordShiftCashInputSession,
+  actorRole: Role,
+) {
+  const input = cashInputSessionSchema.parse(rawInput);
+  const result = await withSupplierCommand(
+    input.commandId,
+    "POS_CASH_INPUT_CANCELLED",
+    "SHIFT",
+    shiftId,
+    actorRole,
+    async (session) => {
+      const shift = await getResolvedShift(shiftId, { session });
+      if (!shift) throw new SupplierBusinessRuleError("الوردية غير موجودة.");
+      assertOpenShift(shift);
+      await assertActiveSupplier(input.supplierId, input.milkType, session);
+      return {
+        shiftId,
+        supplierId: input.supplierId,
+        milkType: input.milkType,
+        inputActions: input.inputActions,
+      };
+    },
+  );
+  return { input: result.value, duplicate: result.duplicate };
 }
 
 export async function recordOwnerMovement(rawInput: RecordOwnerMovementInput) {
@@ -244,6 +312,40 @@ export async function listPricePeriods() {
 
 export async function listPendingPosCash() {
   return listAccountMovements({ ownerReviewStatus: "PENDING" });
+}
+
+export async function listCashInputAudits(): Promise<CashInputAudit[]> {
+  const events = await listSupplierEvents(["SHIFT_CASH_RECORDED", "POS_CASH_INPUT_CANCELLED"], 120);
+  return events.flatMap<CashInputAudit>((event) => {
+    if (event.kind === "SHIFT_CASH_RECORDED") {
+      const result = recordedCashInputResultSchema.safeParse(event.result);
+      if (!result.success) return [];
+      return [
+        {
+          id: event.id,
+          supplierId: result.data.movement.supplierId,
+          milkType: result.data.movement.milkType,
+          amountPiasters: result.data.movement.amountPiasters,
+          outcome: "SAVED" as const,
+          inputActions: result.data.inputActions,
+          createdAt: event.createdAt,
+        },
+      ];
+    }
+    const result = cancelledCashInputResultSchema.safeParse(event.result);
+    if (!result.success) return [];
+    return [
+      {
+        id: event.id,
+        supplierId: result.data.supplierId,
+        milkType: result.data.milkType,
+        amountPiasters: null,
+        outcome: "CANCELLED" as const,
+        inputActions: result.data.inputActions,
+        createdAt: event.createdAt,
+      },
+    ];
+  });
 }
 
 export async function getSupplierAccount(supplierId: string, milkType: MilkType) {

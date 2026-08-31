@@ -50,11 +50,12 @@ type HistoryItem =
 
 const shiftLabels: Record<ShiftType, string> = { MORNING: "وردية صباحية", NIGHT: "وردية مسائية" };
 const milkLabels: Record<MilkType, string> = { COW: "لبن بقري", BUFFALO: "لبن جاموسي" };
-const cashAmounts = [5, 10, 20, 50, 100, 200] as const;
-
-function emptyCashCounts(): Record<(typeof cashAmounts)[number], number> {
-  return { 5: 0, 10: 0, 20: 0, 50: 0, 100: 0, 200: 0 };
-}
+const cashRecommendations = [50, 100, 200] as const;
+const cashKeypad = ["7", "8", "9", "4", "5", "6", "1", "2", "3"] as const;
+type CashInputAction =
+  | { kind: "RECOMMENDATION"; amountEgp: number }
+  | { kind: "DIGIT"; digit: string }
+  | { kind: "BACKSPACE" };
 
 const vintageNameButtonSx = {
   minHeight: { xs: 76, sm: 88 },
@@ -99,14 +100,6 @@ function supplierMilkTypes(supplier: PosBootstrap["suppliers"][number] | null) {
   return supplier?.milkTypes?.length ? supplier.milkTypes : [...milkTypes];
 }
 
-function cairoClock() {
-  return new Intl.DateTimeFormat("ar-EG", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Africa/Cairo",
-  }).format(new Date());
-}
-
 function formatHistoryTime(timestamp: string) {
   return new Intl.DateTimeFormat("ar-EG", {
     hour: "2-digit",
@@ -129,8 +122,8 @@ export function PosWorkspace({
   const [satls, setSatls] = useState(0);
   const [cups, setCups] = useState(0);
   const [quarters, setQuarters] = useState(0);
-  const [cashCounts, setCashCounts] =
-    useState<Record<(typeof cashAmounts)[number], number>>(emptyCashCounts);
+  const [cashAmountEgp, setCashAmountEgp] = useState("");
+  const [cashInputActions, setCashInputActions] = useState<CashInputAction[]>([]);
   const [cashOpen, setCashOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<TimelineEntry | null>(null);
   const [busy, setBusy] = useState(false);
@@ -149,11 +142,7 @@ export function PosWorkspace({
     [data, prefix],
   );
   const quantityUnits = satls * 24 + cups * 4 + quarters;
-  const cashPiasters = cashAmounts.reduce(
-    (total, amount) => total + amount * cashCounts[amount] * 100,
-    0,
-  );
-  const cashTotalEgp = (cashPiasters / 100).toLocaleString("ar-EG");
+  const cashPiasters = cashAmountEgp ? Number(cashAmountEgp) * 100 : 0;
   const historyItems = useMemo<HistoryItem[]>(() => {
     if (!data || !historyScope) return [];
     const supplierId = historyScope === "supplier" ? selectedSupplierId : null;
@@ -216,7 +205,8 @@ export function PosWorkspace({
       setMilkType(null);
       setPrefix([]);
       setEditingEntry(null);
-      setCashCounts(emptyCashCounts());
+      setCashAmountEgp("");
+      setCashInputActions([]);
       setSatls(0);
       setCups(0);
       setQuarters(0);
@@ -283,6 +273,50 @@ export function PosWorkspace({
     setQuarters(0);
   }
 
+  function resetCashInput() {
+    setCashAmountEgp("");
+    setCashInputActions([]);
+  }
+
+  function chooseCashRecommendation(amountEgp: number) {
+    setCashAmountEgp(String(amountEgp));
+    setCashInputActions((actions) => [...actions, { kind: "RECOMMENDATION", amountEgp }]);
+  }
+
+  function appendCashDigit(digit: string) {
+    const nextAmount = cashAmountEgp === "0" ? digit : `${cashAmountEgp}${digit}`;
+    if (nextAmount.length > 7 || Number(nextAmount) > 1_000_000) return;
+    setCashAmountEgp(nextAmount);
+    setCashInputActions((actions) => [...actions, { kind: "DIGIT", digit }]);
+  }
+
+  function backspaceCashAmount() {
+    if (!cashAmountEgp) return;
+    setCashAmountEgp(cashAmountEgp.slice(0, -1));
+    setCashInputActions((actions) => [...actions, { kind: "BACKSPACE" }]);
+  }
+
+  function closeCashInput() {
+    const actions = cashInputActions;
+    const shiftId = data?.shift.id;
+    const supplierId = selectedSupplier?.id;
+    const selectedMilkType = milkType;
+    resetCashInput();
+    setCashOpen(false);
+    if (!shiftId || !supplierId || !selectedMilkType || actions.length === 0 || !navigator.onLine)
+      return;
+    void fetch(`/api/supplier-shifts/${encodeURIComponent(shiftId)}/cash-input`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        commandId: requestId(),
+        supplierId,
+        milkType: selectedMilkType,
+        inputActions: actions,
+      }),
+    });
+  }
+
   function selectSupplier(supplierId: string) {
     const supplier = data?.suppliers.find((candidate) => candidate.id === supplierId) ?? null;
     const types = supplierMilkTypes(supplier);
@@ -306,7 +340,7 @@ export function PosWorkspace({
     setMilkType(null);
     setPrefix([]);
     setEditingEntry(null);
-    setCashCounts(emptyCashCounts());
+    resetCashInput();
     resetQuantity();
   }
 
@@ -477,10 +511,11 @@ export function PosWorkspace({
           supplierId: selectedSupplier.id,
           milkType,
           amountPiasters: cashPiasters,
+          inputActions: cashInputActions,
         },
       });
       setData(localData);
-      setCashCounts(emptyCashCounts());
+      resetCashInput();
       setCashOpen(false);
       const result = await syncPersistedSupplierCommand<{ movement: { id: string } }>(outboxEntry);
       if (result.status === "synced") await loadBootstrap(data.shift.id);
@@ -800,9 +835,9 @@ export function PosWorkspace({
         <CloseOutlinedIcon />
       </Fab>
 
-      <Dialog open={cashOpen} onClose={() => !busy && setCashOpen(false)} fullScreen>
-        <Box component="section" sx={{ height: "100dvh", p: "1vmin", overflow: "hidden" }}>
-          <Stack spacing={0} sx={{ height: "calc(100dvh - 2vmin)", gap: "1vmin" }}>
+      <Dialog open={cashOpen} onClose={() => !busy && closeCashInput()} fullScreen>
+        <Box component="section" sx={{ height: "100dvh", p: "2vmin", overflow: "hidden" }}>
+          <Stack spacing={0} sx={{ height: "calc(100dvh - 4vmin)", gap: "2vmin" }}>
             <Box sx={{ position: "relative" }}>
               <Box
                 component="button"
@@ -813,7 +848,7 @@ export function PosWorkspace({
                 sx={{
                   display: "block",
                   width: "100%",
-                  height: "15vmin",
+                  height: "12vmin",
                   minHeight: 0,
                   border: "2px solid",
                   borderColor: "primary.main",
@@ -830,8 +865,8 @@ export function PosWorkspace({
                   sx={{
                     display: "block",
                     px: "10vmin",
-                    pt: "1vmin",
-                    fontSize: staticHeaderNameSize,
+                    pt: "1.25vmin",
+                    fontSize: "4vmin",
                     fontWeight: 800,
                     lineHeight: 1.1,
                     whiteSpace: "nowrap",
@@ -842,133 +877,129 @@ export function PosWorkspace({
                   {selectedSupplier?.displayName}
                 </Typography>
                 {milkType && (
-                  <Typography align="center" sx={{ fontSize: "2.4vmin", fontWeight: 700 }}>
+                  <Typography align="center" sx={{ fontSize: "2.2vmin", fontWeight: 700 }}>
                     {milkLabels[milkType]}
                   </Typography>
                 )}
-                <Typography
-                  component="output"
-                  align="center"
-                  sx={{
-                    display: "block",
-                    pb: "1vmin",
-                    fontSize: "2.4vmin",
-                    fontWeight: 900,
-                  }}
-                >
-                  {cashTotalEgp} ج
-                </Typography>
               </Box>
               <Button
                 type="button"
                 aria-label="العودة إلى وزن المورد"
                 disabled={busy}
-                onClick={() => {
-                  setCashCounts(emptyCashCounts());
-                  setCashOpen(false);
-                }}
+                onClick={closeCashInput}
                 sx={{ ...vintageHeaderActionSx, left: 0 }}
               >
                 <ReplayOutlinedIcon sx={{ fontSize: staticHeaderIconSize }} />
               </Button>
-              <Typography
-                component="time"
-                aria-label="الوقت الحالي"
-                sx={{
-                  position: "absolute",
-                  top: "1vmin",
-                  right: "1.5vmin",
-                  fontSize: "2vmin",
-                  fontWeight: 800,
-                }}
-              >
-                {cairoClock()}
-              </Typography>
             </Box>
             {selectedSupplier?.posInstruction && (
               <Paper variant="outlined" sx={{ p: 0.75 }}>
                 <Typography align="center">{selectedSupplier.posInstruction}</Typography>
               </Paper>
             )}
-            <Stack sx={{ flexGrow: 1, minHeight: 0, pb: "2vmin" }}>
-              <Grid
-                container
-                spacing={0}
+            <Stack
+              sx={{
+                flexGrow: 1,
+                minHeight: 0,
+                alignItems: "center",
+                justifyContent: "space-evenly",
+              }}
+            >
+              <Stack direction="row" spacing={1}>
+                {cashRecommendations.map((amount) => (
+                  <Button
+                    key={amount}
+                    type="button"
+                    variant="outlined"
+                    disabled={busy}
+                    onClick={() => chooseCashRecommendation(amount)}
+                    sx={{
+                      minWidth: "10vmin",
+                      minHeight: "6vmin",
+                      borderRadius: 99,
+                      fontSize: "2.2vmin",
+                    }}
+                  >
+                    {amount}
+                  </Button>
+                ))}
+              </Stack>
+              <Box
+                component="output"
+                aria-label="المبلغ النقدي بالجنيه"
+                dir="ltr"
                 sx={{
-                  width: "100%",
-                  maxWidth: 960,
-                  height: "100%",
-                  minHeight: 0,
-                  mx: "auto",
-                  gridAutoRows: "minmax(0, 1fr)",
-                  gap: "1.5vmin",
+                  width: "min(100%, 42vmin)",
+                  minHeight: "9vmin",
+                  borderBottom: "2px solid",
+                  borderColor: "text.primary",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "5vmin",
+                  fontWeight: 800,
+                  fontVariantNumeric: "tabular-nums",
                 }}
               >
-                {cashAmounts.map((amount) => (
-                  <Grid key={amount} size={{ xs: 4 }} sx={{ display: "flex", minHeight: 0 }}>
-                    <Stack
-                      sx={{ width: "100%", height: "100%", minHeight: 0, alignItems: "center" }}
-                    >
-                      <Box
-                        sx={{
-                          flexGrow: 1,
-                          minHeight: 0,
-                          width: "100%",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <Button
-                          type="button"
-                          variant="outlined"
-                          disabled={busy}
-                          onClick={() =>
-                            setCashCounts((counts) => ({ ...counts, [amount]: counts[amount] + 1 }))
-                          }
-                          sx={{
-                            width: "auto",
-                            height: "100%",
-                            maxWidth: "100%",
-                            maxHeight: "30vmin",
-                            minWidth: 0,
-                            aspectRatio: "1",
-                            borderRadius: "50%",
-                            fontSize: "3.2vmin",
-                            fontWeight: 800,
-                            borderWidth: 3,
-                            borderColor: "text.primary",
-                          }}
-                        >
-                          {amount}
-                        </Button>
-                      </Box>
-                      <Button
-                        type="button"
-                        variant="text"
-                        disabled={busy || cashCounts[amount] === 0}
-                        onClick={() =>
-                          setCashCounts((counts) => ({
-                            ...counts,
-                            [amount]: Math.max(0, counts[amount] - 1),
-                          }))
-                        }
-                        aria-label={`إنقاص عدد فئة ${amount} جنيه`}
-                        sx={{
-                          mt: "1vmin",
-                          minHeight: staticCounterSize,
-                          minWidth: staticCounterSize,
-                          fontSize: "3.6vmin",
-                          fontWeight: 800,
-                          color: "text.primary",
-                        }}
-                      >
-                        {cashCounts[amount]}
-                      </Button>
-                    </Stack>
-                  </Grid>
+                {cashAmountEgp || "0"}
+              </Box>
+              <Box
+                dir="ltr"
+                sx={{
+                  width: "min(100%, 42vmin)",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: "1vmin",
+                }}
+              >
+                {cashKeypad.map((digit) => (
+                  <Button
+                    key={digit}
+                    type="button"
+                    variant="text"
+                    disabled={busy}
+                    onClick={() => appendCashDigit(digit)}
+                    sx={{
+                      minHeight: "7vmin",
+                      fontSize: "3vmin",
+                      fontWeight: 800,
+                      color: "text.primary",
+                    }}
+                  >
+                    {digit}
+                  </Button>
                 ))}
-              </Grid>
+                <Box aria-hidden="true" />
+                <Button
+                  type="button"
+                  variant="text"
+                  disabled={busy}
+                  onClick={() => appendCashDigit("0")}
+                  sx={{
+                    minHeight: "7vmin",
+                    fontSize: "3vmin",
+                    fontWeight: 800,
+                    color: "text.primary",
+                  }}
+                >
+                  0
+                </Button>
+                <Button
+                  type="button"
+                  variant="text"
+                  disabled={busy}
+                  onClick={backspaceCashAmount}
+                  aria-label="حذف آخر رقم"
+                  sx={{
+                    minHeight: "7vmin",
+                    fontSize: "3vmin",
+                    fontWeight: 800,
+                    color: "text.primary",
+                  }}
+                >
+                  ←
+                </Button>
+              </Box>
             </Stack>
           </Stack>
         </Box>
